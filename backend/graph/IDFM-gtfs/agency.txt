@@ -1,0 +1,64 @@
+agency_id,agency_name,agency_url,agency_timezone,agency_lang,agency_phone,agency_email,agency_fare_url,ticketing_deep_link_id
+IDFM:1060,Paris Saclay,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1052,Mantois,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1059,Essonne Sud Ouest,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1070,Pays Briard,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1055,Meaux et Ourcq,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:64,Marne-la-Vallée,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:885,Paris-Saclay Mobilités,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1061,Vélizy Vallées,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1054,Argenteuil - Boucles de Seine,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1049,Vallée de Montmorency,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1051,Poissy - Les Mureaux,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1056,Brie et 2 Morin,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1050,Grand Melun,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1057,Val d'Yerres Val de Seine,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1058,Essonne Sud Est,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:78,Sénart,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1065,Marne et Seine,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1068,Saint-Quentin-en-Yvelines,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1071,Roissy Ouest,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1069,Terres d'Envol,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:81,Sit'bus,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1062,Saint Germain Boucles de Seine,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:663,Chavilbus,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1048,Vexin,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:6,Apolo 7,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:76,Seine et Marne Express,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1047,Seine Grand Orly,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:184,Seine-Saint-Denis,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1064,Vallée Grand Sud Paris,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1063,Bièvre,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:593,Titus,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1075,Vallée du Loing - Nemours,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1072,Roissy Est,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1073,Pays de Montereau,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1078,Provinois - Brie et Seine,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1077,Grand Versailles,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1076,Cœur d’Essonne,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1074,Fontainebleau - Moret,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1080,Evry Centre Essonne,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1079,Lignes Île-de-France Ouest,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1081,Centre et Sud Yvelines,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1083,Haut Val d'Oise,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1082,Cergy-Pontoise Confluence,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1085,Aérobus,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1086,Val Parisis,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_1004,Keolis Ouest Val-de-Marne,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_1042,STRETTO,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_100,RATP,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_039,SAVAC,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_111,Mobicité,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_116,Keolis Mobilité Roissy,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_334,Autocars Dominique,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_1041,Francilité Val Parisis,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_231,Magical Shuttle,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_1044,Paris Seine Mobilités,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_043,ADP,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_233,Autobus du Fort,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_1028,Keolis Roissy Pays de France Ouest,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_1011,RD Mantois,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:Operator_1015,Keolis Val d'Yerres Val de Seine,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:1046,Transilien,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:93,TER,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
+IDFM:71,RER,https://www.iledefrance-mobilites.fr,Europe/Paris,,,,https://applidium.page.link/default,ticketing_deep_link:1
