@@ -1,5 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import Map from './components/Map.vue'
+
 
 const msg = ref('Loading...')
 
@@ -13,6 +15,7 @@ onMounted(async () => {
 <template>
   <div>
     <h1>{{ msg }}</h1>
+    <Map />
   </div>
 </template>
 
