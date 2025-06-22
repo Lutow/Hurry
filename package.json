@@ -4,11 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-  "dev": "concurrently \"npm run vue\" \"npm run fastapi\"",
+  "fastapi": "uvicorn backend.main:app --reload",
   "vue": "cd frontend && vite",
-  "fastapi": "uvicorn backend.main:app --reload --app-dir ."
+  "dev": "concurrently \"npm run vue\" \"npm run fastapi\""
   },
   "dependencies": {
+    "leaflet": "^1.9.4",
     "vue": "^3.5.13"
   },
   "devDependencies": {
