@@ -143,7 +143,7 @@ const loadMapData = async (map) => {
         }
         
         if (feature.properties.zone_id) {
-          popupContent += `<br>Zone: ${feature.properties.zone_id}`;
+          popupContent += `<br>Zone : ${feature.properties.zone_id}`;
         }
         
         layer.bindPopup(popupContent);
@@ -401,18 +401,18 @@ const loadUniqueEdges = async (map) => {
           const routeName = feature.properties.route_short_name || 'N/A'
           popupContent += `
             <h4>🚇 Ligne ${routeName}</h4>
-            <p><strong>De:</strong> ${feature.properties.from_name}</p>
-            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
-            <p><strong>Type:</strong> Connexion directe</p>
+            <p><strong>De :</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers :</strong> ${feature.properties.to_name}</p>
+            <p><strong>Type :</strong> Connexion directe</p>
           `
         } else if (feature.properties.type === 'transfer') {
           const transferTime = feature.properties.transfer_time || 'N/A'
           popupContent += `
             <h4>🔄 Correspondance</h4>
-            <p><strong>De:</strong> ${feature.properties.from_name}</p>
-            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
-            <p><strong>Temps:</strong> ${transferTime}s</p>
-            <p><strong>Type:</strong> Transfert</p>
+            <p><strong>De :</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers :</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps :</strong> ${transferTime}s</p>
+            <p><strong>Type :</strong> Transfert</p>
           `
         }
         
