@@ -41,12 +41,15 @@ const stopTimer = () => {
 
 // Variables réactives pour la gestion des couches sur la carte
 const stationsLayer = ref(null)
+const edgesLayer = ref(null)  // Nouvelle couche pour les arêtes
 const moveEndListener = ref(null)
 const zoomStartListener = ref(null)  // Nouvel écouteur pour le début de zoom
 const moveStartListener = ref(null)  // Nouvel écouteur pour le début de déplacement
 const currentRequest = ref(null)
+const currentEdgesRequest = ref(null)  // Requête pour les arêtes
 const loadingIndicator = ref(null)
 const updatingStations = ref(false)  // Nouvelle variable pour suivre l'état de mise à jour des stations
+const showEdges = ref(true)  // Contrôler l'affichage des arêtes
 
 const hideStationsLayer = () => {
   if (stationsLayer.value && !updatingStations.value) {
@@ -299,6 +302,9 @@ const loadMapData = async (map) => {
     map.on('zoomstart', onZoomStart)
     map.on('movestart', onMoveStart)
     
+    // Charger les arêtes uniques après avoir chargé les stations
+    await loadUniqueEdges(map)
+    
     loading.value = false
     loadingCompleted.value = true
     stopTimer()
@@ -311,6 +317,134 @@ const loadMapData = async (map) => {
     error.value = `Erreur lors du chargement des données: ${err.message}`
     loading.value = false
     stopTimer()
+  }
+}
+
+// Fonction pour charger les arêtes uniques du métro
+const loadUniqueEdges = async (map) => {
+  if (!showEdges.value) return
+
+  console.log("Chargement des arêtes uniques...")
+
+  try {
+    // Annuler la requête d'arêtes précédente si elle existe
+    if (currentEdgesRequest.value) {
+      console.log("Annulation de la requête d'arêtes précédente")
+      currentEdgesRequest.value.abort()
+    }
+
+    // Créer un contrôleur d'annulation pour cette requête
+    const controller = new AbortController()
+    currentEdgesRequest.value = controller
+
+    const url = `http://localhost:8000/api/unique/edges`
+    const res = await fetch(url, { signal: controller.signal }).catch(err => {
+      if (err.name === 'AbortError') {
+        console.log('Requête d\'arêtes annulée')
+        return null
+      }
+      throw err
+    })
+
+    // Si la requête a été annulée, arrêter le traitement
+    if (!res) return
+
+    if (!res.ok) {
+      throw new Error(`Erreur HTTP pour les arêtes: ${res.status}`)
+    }
+
+    const edgesGeojson = await res.json()
+    console.log(`Chargées ${edgesGeojson.features?.length || 0} arêtes depuis l'API`)
+
+    // Nettoyer la couche d'arêtes précédente si elle existe
+    if (edgesLayer.value) {
+      map.removeLayer(edgesLayer.value)
+    }
+
+    // Créer la couche d'arêtes avec styles différents selon le type
+    edgesLayer.value = L.geoJSON(edgesGeojson, {
+      style: (feature) => {
+        const edgeType = feature.properties.type
+        const color = feature.properties.color || '#CCCCCC'
+
+        if (edgeType === 'direct') {
+          // Arêtes directes (lignes de métro) - plus épaisses et colorées
+          return {
+            color: color,
+            weight: 3,
+            opacity: 0.8,
+            smoothFactor: 1
+          }
+        } else if (edgeType === 'transfer') {
+          // Transferts - plus fins et en rouge
+          return {
+            color: '#FF0000',
+            weight: 2,
+            opacity: 0.6,
+            dashArray: '5, 5', // Ligne pointillée pour les transferts
+            smoothFactor: 1
+          }
+        } else {
+          // Style par défaut
+          return {
+            color: '#CCCCCC',
+            weight: 2,
+            opacity: 0.5
+          }
+        }
+      },
+      onEachFeature: (feature, layer) => {
+        // Popup avec informations sur l'arête
+        let popupContent = `<div class="edge-popup">`
+        
+        if (feature.properties.type === 'direct') {
+          const routeName = feature.properties.route_short_name || 'N/A'
+          popupContent += `
+            <h4>🚇 Ligne ${routeName}</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Type:</strong> Connexion directe</p>
+          `
+        } else if (feature.properties.type === 'transfer') {
+          const transferTime = feature.properties.transfer_time || 'N/A'
+          popupContent += `
+            <h4>🔄 Correspondance</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps:</strong> ${transferTime}s</p>
+            <p><strong>Type:</strong> Transfert</p>
+          `
+        }
+        
+        popupContent += `</div>`
+        layer.bindPopup(popupContent)
+      }
+    })
+
+    // Ajouter la couche d'arêtes à la carte (en dessous des stations)
+    edgesLayer.value.addTo(map)
+    
+    // Déplacer les stations au-dessus des arêtes
+    if (stationsLayer.value) {
+      stationsLayer.value.bringToFront()
+    }
+
+    console.log(`Arêtes chargées avec succès: ${edgesGeojson.metadata?.total_edges || 'N/A'} arêtes`)
+
+  } catch (err) {
+    console.error("Erreur lors du chargement des arêtes:", err)
+  }
+}
+
+// Fonction pour charger manuellement les arêtes (pour debug)
+const loadEdgesManually = async () => {
+  console.log("🔄 Chargement manuel des arêtes...")
+  const mapInstance = document.getElementById('map')._leaflet_map
+  if (mapInstance) {
+    await loadUniqueEdges(mapInstance)
+    console.log("✅ Arêtes chargées manuellement")
+  } else {
+    console.error("❌ Instance de carte non trouvée")
   }
 }
 
@@ -332,6 +466,7 @@ const initMap = async () => {
   }).addTo(map)
 
   await loadMapData(map)
+  await loadUniqueEdges(map)  // Charger les arêtes uniques lors de l'initialisation
 }
 
 onMounted(async () => {
@@ -343,6 +478,11 @@ onUnmounted(() => {
   // Annuler la requête en cours si elle existe
   if (currentRequest.value) {
     currentRequest.value.abort()
+  }
+  
+  // Annuler la requête d'arêtes en cours si elle existe
+  if (currentEdgesRequest.value) {
+    currentEdgesRequest.value.abort()
   }
   
   // Nettoyer l'indicateur de chargement
@@ -372,6 +512,27 @@ onUnmounted(() => {
     }
   }
 })
+
+const toggleEdges = async () => {
+  showEdges.value = !showEdges.value
+  
+  if (showEdges.value) {
+    // Afficher les arêtes
+    const mapInstance = document.getElementById('map')._leaflet_map
+    if (mapInstance) {
+      await loadUniqueEdges(mapInstance)
+    }
+  } else {
+    // Masquer les arêtes
+    if (edgesLayer.value) {
+      const mapInstance = document.getElementById('map')._leaflet_map
+      if (mapInstance) {
+        mapInstance.removeLayer(edgesLayer.value)
+      }
+      edgesLayer.value = null
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -507,5 +668,76 @@ onUnmounted(() => {
 
 :deep(.unknown-accessibility) {
   background-color: rgba(255, 152, 0, 0.2);
+}
+
+/* Styles pour les popups des arêtes */
+.edge-popup {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.edge-popup h4 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.edge-popup p {
+  margin: 2px 0;
+  color: #666;
+}
+
+/* Styles pour les contrôles de la carte */
+.map-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.edges-toggle-button {
+  background-color: white;
+  border: 2px solid #ccc;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.edges-toggle-button:hover {
+  background-color: #f0f0f0;
+  border-color: #999;
+}
+
+.edges-toggle-button.active {
+  background-color: #3498db;
+  color: white;
+  border-color: #2980b9;
+}
+
+.edges-toggle-button.active:hover {
+  background-color: #2980b9;
+}
+
+.manual-load-button {
+  background-color: #27ae60;
+  color: white;
+  border: 2px solid #229954;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.manual-load-button:hover {
+  background-color: #229954;
 }
 </style>
