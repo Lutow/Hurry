@@ -6,7 +6,7 @@
   "scripts": {
   "fastapi": "uvicorn backend.main:app --reload",
   "vue": "cd frontend && vite",
-  "dev": "concurrently \"npm run vue\" \"npm run fastapi\""
+  "dev": "concurrently --names \"API,WEB\" --prefix-colors \"bgBlue.bold,bgMagenta.bold\" \"npm run fastapi\" \"npm run vue\""
   },
   "dependencies": {
     "leaflet": "^1.9.4",
