@@ -1,9 +1,10 @@
 <script setup>
-import { ref } from 'vue'
 import Map from './components/Map.vue'
 import Sidebar from './components/Sidebar.vue'
 import SearchOverlay from './components/SearchOverlay.vue'
+import Traffic from "./components/Traffic.vue";
 import ConnectivityChecker from './components/ConnectivityChecker.vue'
+import {ref} from "vue";
 
 const showConnectivity = ref(false)
 
@@ -13,13 +14,8 @@ const toggleConnectivity = () => {
 </script>
 
 <template>
-  <div class="app-container">
-    <Map />
-    <Sidebar />
-    <SearchOverlay />
-    
-    <!-- Bouton flottant pour ouvrir le vérificateur de connexité -->
-    <button 
+  <router-view />
+   <button
       class="connectivity-toggle"
       @click="toggleConnectivity"
       :title="showConnectivity ? 'Fermer la vérification de connexité' : 'Vérifier la connexité du réseau'"
@@ -27,14 +23,13 @@ const toggleConnectivity = () => {
       <span class="toggle-icon">{{ showConnectivity ? '✕' : '🔗' }}</span>
       <span class="toggle-text">{{ showConnectivity ? 'Fermer' : 'Connexité' }}</span>
     </button>
-    
+
     <!-- Overlay pour le vérificateur de connexité -->
     <div v-if="showConnectivity" class="connectivity-overlay">
       <div class="connectivity-container">
         <ConnectivityChecker />
       </div>
     </div>
-  </div>
 </template>
 
 <style scoped>
@@ -45,7 +40,6 @@ const toggleConnectivity = () => {
   overflow: hidden;
 }
 
-/* Bouton flottant pour la connexité */
 .connectivity-toggle {
   position: fixed;
   top: 20px;
@@ -115,11 +109,11 @@ const toggleConnectivity = () => {
     font-size: 0.8rem;
     min-width: 100px;
   }
-  
+
   .connectivity-overlay {
     padding: 10px;
   }
-  
+
   .connectivity-container {
     width: 100%;
   }
