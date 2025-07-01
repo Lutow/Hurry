@@ -12,6 +12,7 @@
       <input type="time" v-model="heure" />
 
       <button type="submit">Rechercher</button>
+      <button @click=fetchConnectivity>Verifier la connexité du réseau</button>
     </form>
   </div>
 </template>
@@ -23,17 +24,19 @@ const depart = ref('')
 const arrivee = ref('')
 const heure = ref('')
 
+function fetchConnectivity() {
+  fetch('graph/connectivity').then(res => res.json()).then(data => {console.log(data)})
+}
 function handleSearch() {
   console.log('Recherche trajet:', depart.value, arrivee.value, heure.value)
-  // Envoie vers une API ou traitement du trajet ici
 }
 </script>
 
 <style scoped>
 .search-overlay {
   position: absolute;
-  top: 20px;
-  left: 50%;
+  top: 8%;
+  left: 8%;
   transform: translateX(-50%);
   background: white;
   padding: 20px;
@@ -50,4 +53,30 @@ function handleSearch() {
   margin-top: 8px;
   padding: 8px;
 }
+
+button {
+  padding: 12.5px 30px;
+  border: 0;
+  border-radius: 100px;
+  background-color: #2ba8fb;
+  color: #ffffff;
+  font-weight: Bold;
+  transition: all 0.5s;
+  -webkit-transition: all 0.5s;
+  }
+
+  button:hover {
+    background-color: #6fc5ff;
+    box-shadow: 0 0 20px #6fc5ff50;
+    transform: scale(1.1);
+  }
+
+  button:active {
+    background-color: #3d94cf;
+    transition: all 0.25s;
+    -webkit-transition: all 0.25s;
+    box-shadow: none;
+    transform: scale(0.98);
+  }
 </style>
+
