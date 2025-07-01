@@ -96,7 +96,7 @@ class GrapheGTFS:
                 stop_id = row["stop_id"]
                 stop_info = stop_lookup.get(stop_id)
                 if stop_info is None:
-                    print(f"⚠️ No stop found with ID: {stop_id}")
+                    print(f"⚠️ NPas d'arrêt trouvé avec l'ID : {stop_id}")
                     continue
 
                 self.graph.add_node(
@@ -110,12 +110,14 @@ class GrapheGTFS:
                     dep_time = self._parse_time(prev_row["departure_time"])
                     arr_time = self._parse_time(row["arrival_time"])
                     duration = (arr_time - dep_time).total_seconds()
+                    
                     self.graph.add_edge(
                         prev_row["stop_id"],
                         stop_id,
                         weight=duration,
                         trip_id=trip_id
                     )
+                    
                 prev_row = row
 
         self._add_transfer_edges()
