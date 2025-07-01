@@ -1,15 +1,14 @@
 <template>
   <div class="sidebar">
-    <h2>Menu</h2>
-    <ul>
-      <li><a href="#">Infos</a></li>
-      <li><a href="#">Connexion</a></li>
-      <li><a href="#">Aide</a></li>
-    </ul>
+    <h1>Menu</h1>
+    <h2 id="Titre2">Info Traffic</h2>
+    <Traffic />
   </div>
 </template>
 
-<script setup></script>
+<script setup>
+import Traffic from "./Traffic.vue";
+</script>
 
 <style scoped>
 .sidebar {
@@ -17,26 +16,22 @@
   left: 0;
   top: 0;
   height: 100%;
-  width: 200px;
-  background: #2c3e50;
+  width: 340px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   padding: 20px;
   z-index: 999;
 }
-.sidebar h2 {
+
+.sidebar h1 {
   margin-bottom: 20px;
+  margin-top: 0;
 }
-.sidebar ul {
-  list-style: none;
-  padding: 0;
+
+.sidebar #Titre2 {
+  margin-top: 450px;
 }
-.sidebar li {
-  margin: 10px 0;
-}
-.sidebar a {
-  color: white;
-  text-decoration: none;
-}
+
 .sidebar a:hover {
   text-decoration: underline;
 }
