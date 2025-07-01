@@ -1,5 +1,7 @@
 <template>
   <div id="map">
+    <SearchOverlay />
+    <Sidebar />
     <div v-if="loading" class="loading-overlay">
       <div class="loading-spinner"></div>
       <div class="loading-text">Chargement des stations de métro en cours... {{ elapsedTime }}s</div>
@@ -19,6 +21,8 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import SearchOverlay from "./SearchOverlay.vue";
+import Sidebar from "./Sidebar.vue";
 
 // Filtrage des doublons de transferts entre deux noms de stations
 function filterUniqueTransfers(features) {
@@ -489,7 +493,13 @@ const retryLoading = async () => {
 }
 
 const initMap = async () => {
-  const map = L.map('map').setView([48.8566, 2.3522], 12)
+  const map = L.map('map', {
+    center: [48.8566, 2.3522],
+    zoom: 12,
+    zoomControl: false
+  })
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map)
 
   // Vérification DOM
   setTimeout(() => {
