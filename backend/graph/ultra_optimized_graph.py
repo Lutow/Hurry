@@ -40,12 +40,13 @@ class UltraOptimizedGraphGTFS:
         try:
             logger.info("Initialisation de la base de données ultra-optimisée...")
             
-            # Charger les données de base
-            self.stops = pd.read_pickle(f"{self.data_path}/stops.pkl")
+            # Charger les stations depuis la base SQLite (321 uniques)
+            with sqlite3.connect(self.db_path) as conn:
+                self.stops = pd.read_sql_query("SELECT * FROM stops", conn)
             self.routes = pd.read_pickle(f"{self.data_path}/routes.pkl")
             self.transfers = pd.read_pickle(f"{self.data_path}/transfers.pkl")
-            
-            logger.info(f"Données chargées: {len(self.stops)} stations, {len(self.routes)} lignes, {len(self.transfers)} correspondances")
+            logger.info(f"Données chargées: {len(self.stops)} stations (uniques), {len(self.routes)} lignes, {len(self.transfers)} correspondances")
+
             
             # Vérifier si la DB existe et est à jour
             if not os.path.exists(self.db_path) or self._db_needs_update():
@@ -399,7 +400,9 @@ class UltraOptimizedGraphGTFS:
             stats = {}
             
             # Statistiques de base
-            stats['total_stations'] = len(self.stops)
+            # Toujours compter les stations depuis la table stops SQLite (321 uniques)
+            cursor.execute('SELECT COUNT(*) FROM stops')
+            stats['total_stations'] = cursor.fetchone()[0]
             stats['total_routes'] = len(self.routes)
             stats['total_transfers'] = len(self.transfers)
             
@@ -430,3 +433,173 @@ class UltraOptimizedGraphGTFS:
             logger.info("Base de données supprimée - prochaine utilisation recréera la DB")
         else:
             logger.info("Aucune base de données à supprimer")
+    
+    def build_full_network_graph(self) -> nx.DiGraph:
+        """
+        Construit un graphe complet avec toutes les stations et connexions du réseau.
+        Version optimisée qui évite de recalculer si déjà fait.
+        """
+        logger.info("Construction du graphe complet pour vérification de connexité...")
+        
+        conn = sqlite3.connect(self.db_path)
+        
+        try:
+            # Créer le graphe
+            graph = nx.DiGraph()
+            
+            # Ajouter toutes les stations
+            logger.info("Ajout de toutes les stations...")
+            for _, stop in self.stops.iterrows():
+                graph.add_node(
+                    stop['stop_id'],
+                    stop_name=stop['stop_name'],
+                    lat=stop['stop_lat'],
+                    lon=stop['stop_lon'],
+                    accessibility=stop.get('wheelchair_boarding', 0)
+                )
+            
+            # Vérifier si la base contient des arêtes
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) FROM edges')
+            edges_count = cursor.fetchone()[0]
+            
+            if edges_count == 0:
+                logger.warning("⚠️ Aucune arête dans la base, construction rapide avec transferts uniquement...")
+                # Utiliser seulement les transferts pour un test rapide
+                for _, transfer in self.transfers.iterrows():
+                    if transfer['from_stop_id'] in graph.nodes and transfer['to_stop_id'] in graph.nodes:
+                        # Ajouter les transferts dans les deux sens
+                        graph.add_edge(
+                            transfer['from_stop_id'],
+                            transfer['to_stop_id'],
+                            weight=transfer.get('min_transfer_time', 120),
+                            edge_type='transfer'
+                        )
+                        graph.add_edge(
+                            transfer['to_stop_id'],
+                            transfer['from_stop_id'],
+                            weight=transfer.get('min_transfer_time', 120),
+                            edge_type='transfer'
+                        )
+                
+                logger.info(f"✅ Graphe rapide créé: {len(graph.nodes)} stations, {len(graph.edges)} connexions (transferts uniquement)")
+                logger.warning("⚠️ ATTENTION: Ce graphe ne contient que les transferts. Pour une connexité complète, la base de données doit contenir les arêtes métro.")
+                return graph
+            
+            # Ajouter toutes les arêtes de métro
+            logger.info("Ajout de toutes les connexions métro...")
+            edges_df = pd.read_sql_query('''
+                SELECT from_stop_id, to_stop_id, travel_time, route_short_name, route_id
+                FROM edges
+            ''', conn)
+            
+            for _, edge in edges_df.iterrows():
+                if edge['from_stop_id'] in graph.nodes and edge['to_stop_id'] in graph.nodes:
+                    graph.add_edge(
+                        edge['from_stop_id'],
+                        edge['to_stop_id'],
+                        weight=edge['travel_time'],
+                        route_id=edge['route_id'],
+                        route_name=edge['route_short_name'],
+                        edge_type='metro'
+                    )
+            
+            # Ajouter tous les transferts
+            logger.info("Ajout de toutes les correspondances...")
+            transfers_df = pd.read_sql_query('''
+                SELECT from_stop_id, to_stop_id, transfer_time
+                FROM transfers
+            ''', conn)
+            
+            for _, transfer in transfers_df.iterrows():
+                if transfer['from_stop_id'] in graph.nodes and transfer['to_stop_id'] in graph.nodes:
+                    # Ajouter le transfert dans les deux sens pour la connexité
+                    graph.add_edge(
+                        transfer['from_stop_id'],
+                        transfer['to_stop_id'],
+                        weight=transfer['transfer_time'],
+                        edge_type='transfer'
+                    )
+                    graph.add_edge(
+                        transfer['to_stop_id'],
+                        transfer['from_stop_id'],
+                        weight=transfer['transfer_time'],
+                        edge_type='transfer'
+                    )
+            
+            logger.info(f"✅ Graphe complet créé: {len(graph.nodes)} stations, {len(graph.edges)} connexions")
+            return graph
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la construction du graphe complet: {e}")
+            raise
+        finally:
+            conn.close()
+    
+    def connected(self):
+        """
+        Vérifie si le réseau de transport est connexe (toutes les stations sont accessibles).
+        Pour un graphe orienté, on vérifie la connexité faible.
+        """
+        logger.info("🔍 Vérification de la connexité du réseau...")
+        
+        # Construire un graphe avec toutes les stations et connexions
+        if not hasattr(self, '_full_graph') or self._full_graph is None:
+            self._full_graph = self.build_full_network_graph()
+        
+        # Pour un réseau de transport, on vérifie la connexité faible
+        # (ignore la direction des arêtes)
+        is_connected = nx.is_weakly_connected(self._full_graph)
+        
+        logger.info(f"📊 Réseau connexe: {'✅ Oui' if is_connected else '❌ Non'}")
+        return is_connected
+    
+    def get_connectivity_details(self) -> Dict:
+        """
+        Retourne des détails sur la connexité du réseau.
+        """
+        logger.info("🔍 Analyse détaillée de la connexité...")
+        
+        if not hasattr(self, '_full_graph') or self._full_graph is None:
+            self._full_graph = self.build_full_network_graph()
+        
+        details = {
+            'is_connected': nx.is_weakly_connected(self._full_graph),
+            'total_nodes': len(self._full_graph.nodes),
+            'total_edges': len(self._full_graph.edges),
+            'number_of_components': nx.number_weakly_connected_components(self._full_graph),
+            'largest_component_size': 0,
+            'isolated_nodes': [],
+            'components_info': []
+        }
+        
+        # Analyser les composantes connexes
+        components = list(nx.weakly_connected_components(self._full_graph))
+        components.sort(key=len, reverse=True)
+        
+        details['largest_component_size'] = len(components[0]) if components else 0
+        
+        # Identifier les nœuds isolés (composantes de taille 1)
+        for component in components:
+            if len(component) == 1:
+                node_id = list(component)[0]
+                node_data = self._full_graph.nodes[node_id]
+                details['isolated_nodes'].append({
+                    'stop_id': node_id,
+                    'stop_name': node_data.get('stop_name', 'Inconnu'),
+                    'lat': node_data.get('lat', 0),
+                    'lon': node_data.get('lon', 0)
+                })
+        
+        # Informations sur toutes les composantes
+        for i, component in enumerate(components):
+            component_info = {
+                'component_id': i + 1,
+                'size': len(component),
+                'percentage': (len(component) / details['total_nodes']) * 100 if details['total_nodes'] > 0 else 0
+            }
+            details['components_info'].append(component_info)
+        
+        logger.info(f"📊 Analyse terminée: {details['number_of_components']} composante(s), plus grande: {details['largest_component_size']} stations")
+        
+        return details
