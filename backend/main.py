@@ -50,11 +50,11 @@ def get_ultra_graph():
     """Lazy loading du graphe ultra-optimisé"""
     global ultra_graph
     if ultra_graph is None:
-        logger.info("Initialisation du graphe ultra-optimisé...")
+        logger.info("Initialisation du graphe ultra-optimise...")
         try:
             ultra_graph = UltraOptimizedGraphGTFS("backend/graph/IDFM-gtfs_metro_pkl")
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation du graphe ultra-optimisé: {e}")
+            logger.error(f"Erreur lors de l'initialisation du graphe ultra-optimise: {e}")
             # Fallback vers la version standard si erreur
             ultra_graph = OptimizedGraphGTFS("backend/graph/IDFM-gtfs_metro_pkl")
     return ultra_graph
@@ -302,7 +302,7 @@ def get_stops_by_zone(
         # Charger seulement les stations dans la zone demandée
         graph_load_time = time.time()
         graph = g.load_graph_for_zone(lat_min, lat_max, lon_min, lon_max)
-        print(f"Graphe optimisé chargé en {time.time() - graph_load_time:.2f} secondes")
+        print(f"Graphe optimise charge en {time.time() - graph_load_time:.2f} secondes")
         
         # Convertir en GeoJSON
         geojson_start_time = time.time()
@@ -536,7 +536,7 @@ def get_unique_edges():
             geojson_data['features'].append(feature)
         
         total_time = time.time() - start_time
-        logger.info(f"Arêtes uniques récupérées en {total_time:.2f} secondes")
+        logger.info(f"Aretes uniques recuperees en {total_time:.2f} secondes")
         
         # Ajouter des métadonnées
         geojson_data["metadata"] = {
@@ -588,7 +588,7 @@ def get_unique_station_connections(station_id: str):
         }
         
         total_time = time.time() - start_time
-        logger.info(f"Connexions uniques récupérées en {total_time:.2f} secondes")
+        logger.info(f"Connexions uniques recuperees en {total_time:.2f} secondes")
         
         result["metadata"] = {
             "processing_time": round(total_time, 2),
@@ -688,7 +688,7 @@ def get_unique_graph_stats():
         }
         
         total_time = time.time() - start_time
-        logger.info(f"Statistiques récupérées en {total_time:.2f} secondes")
+        logger.info(f"Statistiques recuperees en {total_time:.2f} secondes")
         
         result["metadata"] = {
             "processing_time": round(total_time, 2),
@@ -702,3 +702,87 @@ def get_unique_graph_stats():
         error_message = f"Erreur après {total_time:.2f}s: {str(e)}"
         logger.error(error_message)
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/connectivity/check")
+def check_network_connectivity():
+    """
+    Vérifie si le réseau de transport est connexe.
+    Retourne un booléen indiquant si toutes les stations sont accessibles.
+    """
+    start_time = time.time()
+    
+    try:
+        logger.info("🔍 Vérification de la connexité du réseau...")
+        
+        g = get_ultra_graph()
+        is_connected = g.connected()
+        
+        total_time = time.time() - start_time
+        
+        result = {
+            "is_connected": is_connected,
+            "processing_time": round(total_time, 2),
+            "message": "Le réseau est connexe" if is_connected else "Le réseau n'est pas connexe",
+            "status": "success" if is_connected else "warning"
+        }
+        
+        logger.info(f"✅ Vérification terminée en {total_time:.2f}s: {'Connexe' if is_connected else 'Non connexe'}")
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        total_time = time.time() - start_time
+        error_message = f"Erreur lors de la vérification de connexité après {total_time:.2f}s: {str(e)}"
+        logger.error(error_message)
+        raise HTTPException(status_code=500, detail=error_message)
+
+@app.get("/api/connectivity/details")
+def get_connectivity_details():
+    """
+    Retourne des détails complets sur la connexité du réseau.
+    Inclut le nombre de composantes connexes, les nœuds isolés, etc.
+    """
+    start_time = time.time()
+    
+    try:
+        logger.info("📊 Analyse détaillée de la connexité...")
+        
+        g = get_ultra_graph()
+        details = g.get_connectivity_details()
+        
+        total_time = time.time() - start_time
+        details["processing_time"] = round(total_time, 2)
+        
+        logger.info(f"📊 Analyse terminée en {total_time:.2f}s")
+        
+        return JSONResponse(content=details)
+        
+    except Exception as e:
+        total_time = time.time() - start_time
+        error_message = f"Erreur lors de l'analyse de connexité après {total_time:.2f}s: {str(e)}"
+        logger.error(error_message)
+        raise HTTPException(status_code=500, detail=error_message)
+
+@app.get("/api/stats")
+def get_network_stats():
+    """
+    Retourne des statistiques générales sur le réseau.
+    """
+    start_time = time.time()
+    
+    try:
+        logger.info("📈 Récupération des statistiques du réseau...")
+        
+        g = get_ultra_graph()
+        stats = g.get_statistics()
+        
+        total_time = time.time() - start_time
+        stats["processing_time"] = round(total_time, 2)
+        
+        return JSONResponse(content=stats)
+        
+    except Exception as e:
+        total_time = time.time() - start_time
+        error_message = f"Erreur lors de la recuperation des stats apres {total_time:.2f}s: {str(e)}"
+        logger.error(error_message)
+        raise HTTPException(status_code=500, detail=error_message)
