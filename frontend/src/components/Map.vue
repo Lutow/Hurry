@@ -477,13 +477,13 @@ const loadUniqueEdges = async (map) => {
 
 // Fonction pour charger manuellement les arêtes (pour debug)
 const loadEdgesManually = async () => {
-  console.log("🔄 Chargement manuel des arêtes...")
+  console.log("Chargement manuel des arêtes...")
   const mapInstance = document.getElementById('map')._leaflet_map
   if (mapInstance) {
     await loadUniqueEdges(mapInstance)
-    console.log("✅ Arêtes chargées manuellement")
+    console.log("Arêtes chargées manuellement")
   } else {
-    console.error("❌ Instance de carte non trouvée")
+    console.error("Instance de carte non trouvée")
   }
 }
 
