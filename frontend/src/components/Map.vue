@@ -20,6 +20,20 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
+// Filtrage des doublons de transferts entre deux noms de stations
+function filterUniqueTransfers(features) {
+  const seen = new Set()
+  return features.filter(f => {
+    if (f.properties.type !== 'transfer') return true
+    const key1 = `${f.properties.from_name}--${f.properties.to_name}`
+    const key2 = `${f.properties.to_name}--${f.properties.from_name}` // bidirectionnel
+    if (seen.has(key1) || seen.has(key2)) return false
+    seen.add(key1)
+    seen.add(key2)
+    return true
+  })
+}
+
 const loading = ref(false)
 const loadingCompleted = ref(false)
 const error = ref(null)
@@ -69,7 +83,7 @@ const loadMapData = async (map) => {
   loading.value = true
   error.value = null
   startTimer()
-  
+
   try {
     // Récupérer les limites de la carte
     const bounds = map.getBounds()
@@ -77,20 +91,20 @@ const loadMapData = async (map) => {
     const latMax = bounds.getNorth()
     const lonMin = bounds.getWest()
     const lonMax = bounds.getEast()
-    
+
     // Utiliser la nouvelle API pour ne charger que les stations dans la zone visible
     const url = `http://localhost:8000/geo/stops_by_zone?lat_min=${latMin}&lat_max=${latMax}&lon_min=${lonMin}&lon_max=${lonMax}`
-    
+
     // Annuler la requête précédente si elle existe
     if (currentRequest.value) {
       console.log("Annulation de la requête précédente")
       currentRequest.value.abort()
     }
-    
+
     // Créer un contrôleur d'annulation pour cette requête
     const controller = new AbortController()
     currentRequest.value = controller
-    
+
     const res = await fetch(url, { signal: controller.signal }).catch(err => {
       if (err.name === 'AbortError') {
         console.log('Requête annulée')
@@ -98,32 +112,41 @@ const loadMapData = async (map) => {
       }
       throw err
     })
-    
+
     // Si la requête a été annulée, arrêter le traitement
     if (!res) return
-    
+
     if (!res.ok) {
       throw new Error(`Erreur HTTP: ${res.status}`)
     }
     const geojson = await res.json()
-    
+
     // Si le backend a renvoyé des métadonnées sur le temps de traitement, les utiliser
     if (geojson.metadata && geojson.metadata.processing_time) {
       finalTime.value = geojson.metadata.processing_time;
       console.log(`Traitement côté serveur: ${finalTime.value}s pour ${geojson.metadata.number_of_stations} stations`);
     }
-    
+
     // Nettoyer la couche précédente si elle existe
     if (stationsLayer.value) {
       map.removeLayer(stationsLayer.value)
     }
-    
+
     // Ajouter les stations à la carte avec leurs informations d'accessibilité
     stationsLayer.value = L.geoJSON(geojson, {
-      onEachFeature: (feature, layer) => {
+    pointToLayer: (feature, latlng) => {
+    return L.circleMarker(latlng, {
+      radius: 6,
+      color: '#000000',
+      fillColor: '#FFFFFF',
+      fillOpacity: 1,
+      weight: 1
+      })
+    },
+    onEachFeature: (feature, layer) => {
         // Construire le contenu du popup avec les informations d'accessibilité
         let popupContent = `<strong>${feature.properties.name || feature.properties.id}</strong>`;
-        
+
         // Ajouter les informations d'accessibilité si disponibles
         if (feature.properties.wheelchair_boarding !== undefined) {
           const accessibilityStatus = {
@@ -131,29 +154,29 @@ const loadMapData = async (map) => {
             '1': 'Accessible aux fauteuils roulants',
             '2': 'Non accessible aux fauteuils roulants'
           }[feature.properties.wheelchair_boarding] || 'Statut inconnu';
-          
+
           popupContent += `<br><span class="accessibility-info">
             <i class="accessibility-icon">♿</i> ${accessibilityStatus}
           </span>`;
         }
-        
+
         // Ajouter d'autres informations utiles si disponibles
         if (feature.properties.platform_code) {
           popupContent += `<br>Plateforme: ${feature.properties.platform_code}`;
         }
-        
+
         if (feature.properties.zone_id) {
-          popupContent += `<br>Zone : ${feature.properties.zone_id}`;
+          popupContent += `<br>Zone: ${feature.properties.zone_id}`;
         }
-        
+
         layer.bindPopup(popupContent);
       }
     })
-    
+
     // Ajouter la couche à la carte et réinitialiser l'état
     stationsLayer.value.addTo(map)
     updatingStations.value = false
-    
+
     // Nettoyer les anciens écouteurs d'événement s'ils existent
     if (moveEndListener.value) {
       map.off('moveend', moveEndListener.value)
@@ -164,16 +187,16 @@ const loadMapData = async (map) => {
     if (moveStartListener.value) {
       map.off('movestart', moveStartListener.value)
     }
-    
+
     // Créer de nouveaux écouteurs d'événement pour le début de zoom et de déplacement
     const onZoomStart = () => {
       hideStationsLayer()
     }
-    
+
     const onMoveStart = () => {
       hideStationsLayer()
     }
-    
+
     // Créer un nouvel écouteur d'événement pour la fin du déplacement de la carte
     const onMoveEnd = async () => {
       const newBounds = map.getBounds()
@@ -181,34 +204,34 @@ const loadMapData = async (map) => {
       const newLatMax = newBounds.getNorth()
       const newLonMin = newBounds.getWest()
       const newLonMax = newBounds.getEast()
-      
+
       // Vérifier si la nouvelle zone est très différente de la précédente pour éviter trop de requêtes
       const latDiff = Math.abs(newLatMax - latMax) + Math.abs(newLatMin - latMin)
       const lonDiff = Math.abs(newLonMax - lonMax) + Math.abs(newLonMin - lonMin)
-      
+
       if (latDiff > 0.01 || lonDiff > 0.01) {  // Seuil arbitraire pour éviter les requêtes inutiles
         try {
           // Annuler la requête précédente si elle existe
           if (currentRequest.value) {
             currentRequest.value.abort()
           }
-          
+
           // Supprimer l'indicateur de chargement précédent s'il existe
           if (loadingIndicator.value && loadingIndicator.value.parentNode) {
             document.body.removeChild(loadingIndicator.value)
           }
-          
+
           // Afficher une petite notification de chargement
           const loadingDiv = document.createElement('div')
           loadingDiv.className = 'mini-loading'
           loadingDiv.innerHTML = 'Chargement des stations...'
           document.body.appendChild(loadingDiv)
           loadingIndicator.value = loadingDiv
-          
+
           // Créer un nouveau contrôleur d'annulation
           const controller = new AbortController()
           currentRequest.value = controller
-          
+
           // Charger les nouvelles stations
           const newUrl = `http://localhost:8000/geo/stops_by_zone?lat_min=${newLatMin}&lat_max=${newLatMax}&lon_min=${newLonMin}&lon_max=${newLonMax}`
           const newRes = await fetch(newUrl, { signal: controller.signal }).catch(err => {
@@ -218,7 +241,7 @@ const loadMapData = async (map) => {
             }
             throw err
           })
-          
+
           // Si la requête a été annulée, arrêter le traitement
           if (!newRes) {
             // Nettoyer l'indicateur de chargement
@@ -228,21 +251,30 @@ const loadMapData = async (map) => {
             }
             return
           }
-          
+
           if (!newRes.ok) throw new Error(`Erreur HTTP: ${newRes.status}`)
           const newGeojson = await newRes.json()
-          
+
           // Supprimer la couche précédente
           if (stationsLayer.value) {
             map.removeLayer(stationsLayer.value)
           }
-          
+
           // Ajouter les nouvelles stations avec leurs informations d'accessibilité
           stationsLayer.value = L.geoJSON(newGeojson, {
+            pointToLayer: (feature, latlng) => {
+              return L.circleMarker(latlng, {
+                radius: 6,
+                color: '#000000',
+                fillColor: '#FFFFFF',
+                fillOpacity: 1,
+                weight: 3
+              })
+            },
             onEachFeature: (feature, layer) => {
               // Construire le contenu du popup avec les informations d'accessibilité
               let popupContent = `<strong>${feature.properties.name || feature.properties.id}</strong>`;
-              
+
               // Ajouter les informations d'accessibilité si disponibles
               if (feature.properties.wheelchair_boarding !== undefined) {
                 const accessibilityStatus = {
@@ -250,39 +282,39 @@ const loadMapData = async (map) => {
                   '1': 'Accessible aux fauteuils roulants',
                   '2': 'Non accessible aux fauteuils roulants'
                 }[feature.properties.wheelchair_boarding] || 'Statut inconnu';
-                
+
                 popupContent += `<br><span class="accessibility-info">
                   <i class="accessibility-icon">♿</i> ${accessibilityStatus}
                 </span>`;
               }
-              
+
               // Ajouter d'autres informations utiles si disponibles
               if (feature.properties.platform_code) {
                 popupContent += `<br>Plateforme: ${feature.properties.platform_code}`;
               }
-              
+
               if (feature.properties.zone_id) {
                 popupContent += `<br>Zone: ${feature.properties.zone_id}`;
               }
-              
+
               layer.bindPopup(popupContent);
             }
           })
-          
+
           // Ajouter la couche à la carte et réinitialiser l'état
           stationsLayer.value.addTo(map)
           updatingStations.value = false
-          
+
           // Supprimer l'indicateur de chargement
           if (loadingIndicator.value && loadingIndicator.value.parentNode) {
             document.body.removeChild(loadingIndicator.value)
             loadingIndicator.value = null
           }
-          
+
           console.log(`Chargées ${newGeojson.metadata?.number_of_stations || 0} stations dans la nouvelle zone`)
         } catch (err) {
           console.error("Erreur lors du chargement des nouvelles stations:", err)
-          
+
           // S'assurer que l'indicateur de chargement est supprimé en cas d'erreur
           if (loadingIndicator.value && loadingIndicator.value.parentNode) {
             document.body.removeChild(loadingIndicator.value)
@@ -291,24 +323,24 @@ const loadMapData = async (map) => {
         }
       }
     }
-    
+
     // Stocker les écouteurs d'événement pour pouvoir les supprimer plus tard
     moveEndListener.value = onMoveEnd
     zoomStartListener.value = onZoomStart
     moveStartListener.value = onMoveStart
-    
+
     // Attacher les écouteurs d'événement à la carte
     map.on('moveend', onMoveEnd)
     map.on('zoomstart', onZoomStart)
     map.on('movestart', onMoveStart)
-    
+
     // Charger les arêtes uniques après avoir chargé les stations
     await loadUniqueEdges(map)
-    
+
     loading.value = false
     loadingCompleted.value = true
     stopTimer()
-    
+
     // Cache la notification de succès après 5 secondes
     setTimeout(() => {
       loadingCompleted.value = false
@@ -356,6 +388,9 @@ const loadUniqueEdges = async (map) => {
     const edgesGeojson = await res.json()
     console.log(`Chargées ${edgesGeojson.features?.length || 0} arêtes depuis l'API`)
 
+    //Filtrage frontend des transferts en double
+    edgesGeojson.features = filterUniqueTransfers(edgesGeojson.features)
+
     // Nettoyer la couche d'arêtes précédente si elle existe
     if (edgesLayer.value) {
       map.removeLayer(edgesLayer.value)
@@ -396,26 +431,26 @@ const loadUniqueEdges = async (map) => {
       onEachFeature: (feature, layer) => {
         // Popup avec informations sur l'arête
         let popupContent = `<div class="edge-popup">`
-        
+
         if (feature.properties.type === 'direct') {
           const routeName = feature.properties.route_short_name || 'N/A'
           popupContent += `
             <h4>🚇 Ligne ${routeName}</h4>
-            <p><strong>De :</strong> ${feature.properties.from_name}</p>
-            <p><strong>Vers :</strong> ${feature.properties.to_name}</p>
-            <p><strong>Type :</strong> Connexion directe</p>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Type:</strong> Connexion directe</p>
           `
         } else if (feature.properties.type === 'transfer') {
           const transferTime = feature.properties.transfer_time || 'N/A'
           popupContent += `
             <h4>🔄 Correspondance</h4>
-            <p><strong>De :</strong> ${feature.properties.from_name}</p>
-            <p><strong>Vers :</strong> ${feature.properties.to_name}</p>
-            <p><strong>Temps :</strong> ${transferTime}s</p>
-            <p><strong>Type :</strong> Transfert</p>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps:</strong> ${transferTime}s</p>
+            <p><strong>Type:</strong> Transfert</p>
           `
         }
-        
+
         popupContent += `</div>`
         layer.bindPopup(popupContent)
       }
@@ -423,7 +458,7 @@ const loadUniqueEdges = async (map) => {
 
     // Ajouter la couche d'arêtes à la carte (en dessous des stations)
     edgesLayer.value.addTo(map)
-    
+
     // Déplacer les stations au-dessus des arêtes
     if (stationsLayer.value) {
       stationsLayer.value.bringToFront()
@@ -479,27 +514,27 @@ onUnmounted(() => {
   if (currentRequest.value) {
     currentRequest.value.abort()
   }
-  
+
   // Annuler la requête d'arêtes en cours si elle existe
   if (currentEdgesRequest.value) {
     currentEdgesRequest.value.abort()
   }
-  
+
   // Nettoyer l'indicateur de chargement
   if (loadingIndicator.value && loadingIndicator.value.parentNode) {
     document.body.removeChild(loadingIndicator.value)
   }
-  
+
   // Arrêter le timer
   if (timerInterval.value) {
     clearInterval(timerInterval.value)
   }
-  
+
   // Récupérer l'instance de carte si elle existe
   const mapElement = document.getElementById('map')
   if (mapElement && mapElement._leaflet_id) {
     const map = L.DomUtil.get(mapElement)
-    
+
     // Supprimer les écouteurs d'événements
     if (moveEndListener.value) {
       map.off('moveend', moveEndListener.value)
@@ -515,7 +550,7 @@ onUnmounted(() => {
 
 const toggleEdges = async () => {
   showEdges.value = !showEdges.value
-  
+
   if (showEdges.value) {
     // Afficher les arêtes
     const mapInstance = document.getElementById('map')._leaflet_map
