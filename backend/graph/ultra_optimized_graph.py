@@ -603,3 +603,48 @@ class UltraOptimizedGraphGTFS:
         logger.info(f"📊 Analyse terminée: {details['number_of_components']} composante(s), plus grande: {details['largest_component_size']} stations")
         
         return details
+
+
+    def get_shortest_path(self, from_stop_id: str, to_stop_id: str) -> Optional[Dict]:
+        """
+        Calcule le plus court chemin entre deux arrêts en utilisant le poids (temps de trajet ou de transfert).
+        """
+        logger.info(f"🔍 Calcul du plus court chemin entre {from_stop_id} et {to_stop_id}...")
+
+        # Assure-toi que le graphe complet est bien construit
+        if not hasattr(self, '_full_graph') or self._full_graph is None:
+            self._full_graph = self.build_full_network_graph()
+
+        G = self._full_graph
+
+        logger.info(f"🧩 Le graphe contient {len(G.nodes)} nœuds.")
+        logger.info(f"🧩 Nœuds disponibles (stop_id): {list(G.nodes)[:20]} ...")  # Affiche les 20 premiers
+        if from_stop_id not in G or to_stop_id not in G:
+            logger.warning("Un ou les deux arrêts ne sont pas présents dans le graphe.")
+            return None
+
+        try:
+            path = nx.astar_path(G, source=from_stop_id, target=to_stop_id, weight='weight')
+            total_weight = nx.astar_path_length(G, source=from_stop_id, target=to_stop_id, weight='weight')
+
+            # Extraire les arêtes parcourues
+            edges = []
+            for i in range(len(path) - 1):
+                edge_data = G.get_edge_data(path[i], path[i + 1])
+                edges.append({
+                    'from': path[i],
+                    'to': path[i + 1],
+                    'weight': edge_data.get('weight'),
+                    'route': edge_data.get('route_name', ''),
+                    'type': edge_data.get('edge_type', 'metro')
+                })
+
+            return {
+                'path': path,
+                'edges': edges,
+                'total_travel_time': total_weight
+            }
+        except nx.NetworkXNoPath:
+            logger.warning(f"Aucun chemin trouvé entre {from_stop_id} et {to_stop_id}")
+            return None
+
