@@ -1,3 +1,4 @@
+import sqlite3
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -807,3 +808,55 @@ def get_network_stats():
         error_message = f"Erreur lors de la recuperation des stats apres {total_time:.2f}s: {str(e)}"
         logger.error(error_message)
         raise HTTPException(status_code=500, detail=error_message)
+
+
+@app.get("/api/stops/list")
+def get_all_stops():
+    try:
+        g = get_ultra_graph()
+        conn = sqlite3.connect(g.db_path)
+
+        stops = []
+        cursor = conn.cursor()
+        cursor.execute("SELECT stop_id, stop_name FROM stops")
+        rows = cursor.fetchall()
+
+        for row in rows:
+            stops.append({
+                "stop_id": row[0],
+                "stop_name": row[1]
+            })
+
+        conn.close()
+        return {"stops": stops}
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des stops: {e}")
+        raise HTTPException(status_code=500, detail="Erreur lors de la récupération des stops")
+
+
+@app.get("/api/shortest_path")
+def shortest_path(from_stop_id: str = Query(..., description="ID de la station de départ"),
+                  to_stop_id: str = Query(..., description="ID de la station d'arrivée")):
+    start_time = time.time()
+
+    try:
+        logger.info(f"🔍 Requête de plus court chemin entre {from_stop_id} et {to_stop_id}")
+
+        g = get_ultra_graph()
+        result = g.get_shortest_path(from_stop_id, to_stop_id)
+
+        if not result:
+            raise HTTPException(status_code=404, detail="Chemin non trouvé ou stations inconnues")
+
+        result["metadata"] = {
+            "processing_time": round(time.time() - start_time, 2),
+            "from": from_stop_id,
+            "to": to_stop_id
+        }
+
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        logger.error(f"Erreur lors du calcul du chemin: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
