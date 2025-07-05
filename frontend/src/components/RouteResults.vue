@@ -51,6 +51,10 @@
               <div class="route-info">
                 <span class="route-label">Option {{ index + 1 }}</span>
                 <div class="route-metrics">
+                  <span class="emission">
+                    <span class="material-icons">co2</span>
+                    {{ route.co2 }} g
+                  </span>
                   <span class="duration">
                     <span class="material-icons">schedule</span>
                     {{ route.duration }} min
@@ -61,10 +65,10 @@
                   </span>
                 </div>
               </div>
-              
+
               <!-- Bouton pour afficher/masquer le trajet sur la carte -->
               <div class="route-actions">
-                <button 
+                <button
                   class="show-route-btn"
                   :class="{ active: selectedRouteIndex === index }"
                   @click.stop="toggleRouteDisplay(route, index)"
@@ -87,7 +91,7 @@
                     </div>
                     <div class="transfer-label">Correspondance</div>
                   </div>
-                  
+
                   <div class="segment-main">
                     <div class="line-indicator">
                       <div class="line-badge" :style="{ backgroundColor: getLineColor(segment.line) }">
@@ -486,16 +490,36 @@ watch(() => props.routes, () => {
   gap: 16px;
 }
 
-.duration, .transfers {
+/* Harmoniser tous les blocs d'infos (CO2, durée, correspondances) */
+.emission, .duration, .transfers {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 14px;
-  color: #666;
 }
 
-.duration .material-icons, .transfers .material-icons {
+.duration, .transfers {
+  color: #2c3e50;
+}
+
+.emission .material-icons,
+.duration .material-icons,
+.transfers .material-icons {
+  line-height: 1;
+}
+
+.emission {
+  color: #2c3e50;
+}
+
+.emission .material-icons {
+  font-size: 25px;
+  color: #2ecc71;
+}
+
+.duration .material-icons,
+.transfers .material-icons {
   font-size: 16px;
+  color: #2c3e50;
 }
 
 .route-details {
@@ -664,33 +688,33 @@ watch(() => props.routes, () => {
   .route-results-overlay {
     padding: 10px;
   }
-  
+
   .route-results {
     max-height: 90vh;
   }
-  
+
   .results-header {
     padding: 16px;
   }
-  
+
   .header-content h2 {
     font-size: 18px;
   }
-  
+
   .routes-container {
     padding: 16px;
   }
-  
+
   .route-metrics {
     flex-direction: column;
     gap: 8px;
     align-items: flex-end;
   }
-  
+
   .journey-summary {
     padding: 16px;
   }
-  
+
   .route-details {
     padding: 12px;
   }
