@@ -2,6 +2,7 @@ import pandas as pd
 import networkx as nx
 from typing import Dict, List, Tuple, Optional
 import json
+from backend.utils.logger import log_info, log_warning, log_error
 
 def graph_to_geojson_with_edges(graph: nx.DiGraph, include_edges: bool = True) -> Dict:
     """
@@ -93,10 +94,10 @@ def graph_to_geojson_with_edges(graph: nx.DiGraph, include_edges: bool = True) -
             }
             features.append(connection_feature)
         
-        print(f"📊 Connexions ajoutées au GeoJSON:")
-        print(f"  🚇 Arêtes de métro: {metro_edges}")
-        print(f"  🔄 Correspondances: {transfer_edges}")
-        print(f"  📍 Total connexions: {metro_edges + transfer_edges}")
+        log_info(f"Connexions ajoutees au GeoJSON:")
+        log_info(f"  Aretes de metro: {metro_edges}")
+        log_info(f"  Correspondances: {transfer_edges}")
+        log_info(f"  Total connexions: {metro_edges + transfer_edges}")
     
     # Créer le GeoJSON final
     geojson = {
