@@ -1,8 +1,5 @@
 <script setup>
 import Map from './components/Map.vue'
-import Sidebar from './components/Sidebar.vue'
-import SearchOverlay from './components/SearchOverlay.vue'
-import Traffic from "./components/Traffic.vue";
 import ConnectivityChecker from './components/ConnectivityChecker.vue'
 import {ref} from "vue";
 
@@ -14,8 +11,12 @@ const toggleConnectivity = () => {
 </script>
 
 <template>
-  <router-view />
-   <button
+  <div class="app-container">
+    <!-- Composant carte principal (contient déjà Sidebar et SearchOverlay) -->
+    <Map />
+    
+    <!-- Bouton de basculement connexité -->
+    <button
       class="connectivity-toggle"
       @click="toggleConnectivity"
       :title="showConnectivity ? 'Fermer la vérification de connexité' : 'Vérifier la connexité du réseau'"
@@ -30,6 +31,7 @@ const toggleConnectivity = () => {
         <ConnectivityChecker />
       </div>
     </div>
+  </div>
 </template>
 
 <style scoped>
