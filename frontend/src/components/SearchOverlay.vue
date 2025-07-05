@@ -408,7 +408,7 @@ function handleInputChange(field) {
 <style scoped>
 .journey-planner {
   width: 100%;
-  color: white;
+  color: var(--sidebar-text);
   border-radius: 8px;
   overflow: hidden;
   transition: all 0.3s ease;
@@ -418,7 +418,7 @@ function handleInputChange(field) {
   display: flex;
   align-items: center;
   padding: 0 0 15px 0;
-  border-bottom: 2px solid rgba(52, 152, 219, 0.5);
+  border-bottom: 2px solid var(--sidebar-accent-hover);
   margin-bottom: 15px;
 }
 
@@ -430,7 +430,7 @@ function handleInputChange(field) {
 .journey-title .material-icons {
   margin-right: 12px;
   font-size: 24px;
-  color: #3498db;
+  color: var(--sidebar-accent);
 }
 
 .journey-title span:not(.material-icons) {
@@ -445,7 +445,6 @@ function handleInputChange(field) {
 .input-group {
   position: relative;
   margin-bottom: 16px;
-  display: flex;
 }
 
 .location-icon {
@@ -453,16 +452,16 @@ function handleInputChange(field) {
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--sidebar-text-secondary);
   font-size: 18px;
 }
 
 .location-icon.start {
-  color: #2ecc71;
+  color: var(--sidebar-success);
 }
 
 .location-icon.end {
-  color: #e74c3c;
+  color: var(--sidebar-danger);
 }
 
 .journey-input {
@@ -470,61 +469,21 @@ function handleInputChange(field) {
   padding: 10px 10px 10px 40px;
   border: none;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--sidebar-bg-secondary);
+  color: var(--sidebar-text);
   font-size: 14px;
   transition: all 0.3s ease;
   box-sizing: border-box;
 }
 
-/* Bouton pour afficher la liste des stations */
-.dropdown-toggle {
-  background: rgba(255, 255, 255, 0.15);
-  border: none;
-  border-radius: 0 6px 6px 0;
-  color: white;
-  cursor: pointer;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
+.journey-input::placeholder {
+  color: var(--sidebar-text-secondary);
 }
 
-.dropdown-toggle:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-/* Style pour le datalist et l'autocompletion */
-::backdrop {
-  color-scheme: dark;
-}
-
-/* Style pour Chrome autocomplete */
-input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0px 1000px rgba(52, 152, 219, 0.2) inset;
-  -webkit-text-fill-color: white;
-  transition: background-color 5000s ease-in-out 0s;
-}
-
-/* Force l'affichage de la liste déroulante */
-datalist {
-  display: none;
-  position: absolute;
-  background-color: rgba(30, 30, 30, 0.9);
-  border: 1px solid rgba(52, 152, 219, 0.5);
-  border-radius: 0 0 6px 6px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-/* Pour améliorer le contraste des options */
-option {
-  background-color: rgba(30, 30, 30, 0.9);
-  color: white;
-  padding: 8px 12px;
+.journey-input:focus {
+  outline: none;
+  background: var(--sidebar-bg-secondary);
+  box-shadow: 0 0 0 2px var(--sidebar-accent);
 }
 
 .form-footer {
@@ -536,7 +495,7 @@ option {
 .time-selector {
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--sidebar-bg-secondary);
   border-radius: 6px;
   padding: 6px 10px;
 }
@@ -544,13 +503,13 @@ option {
 .time-selector .material-icons {
   margin-right: 8px;
   font-size: 16px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--sidebar-text-secondary);
 }
 
 .time-input {
   background: transparent;
   border: none;
-  color: white;
+  color: var(--sidebar-text);
   font-size: 14px;
   width: 80px;
 }
@@ -563,8 +522,8 @@ option {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(90deg, #3498db, #2ecc71);
-  color: white;
+  background: linear-gradient(90deg, var(--sidebar-accent), var(--sidebar-success));
+  color: var(--sidebar-button-text);
   border: none;
   border-radius: 20px;
   padding: 10px 18px;
@@ -580,14 +539,14 @@ option {
 }
 
 .search-button:not(:disabled):hover {
-  background: linear-gradient(90deg, #2980b9, #27ae60);
+  background: linear-gradient(90deg, var(--sidebar-accent-hover), var(--sidebar-success));
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+  box-shadow: 0 4px 12px var(--sidebar-shadow);
 }
 
 .search-button:not(:disabled):active {
   transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
+  box-shadow: 0 2px 6px var(--sidebar-shadow);
 }
 
 .search-button .material-icons {
@@ -600,9 +559,9 @@ option {
   width: 18px;
   height: 18px;
   margin-right: 6px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid var(--sidebar-text-secondary);
+  border-top-color: var(--sidebar-accent);
   border-radius: 50%;
-  border-top-color: white;
   animation: spin 1s infinite linear;
 }
 
@@ -615,13 +574,13 @@ option {
   align-items: center;
   padding: 10px;
   margin-top: 16px;
-  background-color: rgba(231, 76, 60, 0.2);
+  background-color: var(--sidebar-error-bg);
   border-radius: 6px;
   font-size: 14px;
 }
 
 .error-icon {
-  color: #e74c3c;
+  color: var(--sidebar-danger);
   margin-right: 8px;
   font-size: 20px;
 }
@@ -647,61 +606,5 @@ option {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* Styles pour la liste des suggestions de stations - Supprimés car intégrés à station-dropdown */
-
-/* Styles pour le dropdown personnalisé des stations */
-.station-dropdown {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  background: rgba(30, 30, 30, 0.95);
-  border: 1px solid rgba(52, 152, 219, 0.5);
-  border-radius: 0 0 8px 8px;
-  max-height: 300px;
-  overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.station-option {
-  padding: 10px 15px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.station-option:hover {
-  background: rgba(52, 152, 219, 0.2);
-}
-
-/* Style pour la suggestion sélectionnée */
-.station-option.selected {
-  background: rgba(52, 152, 219, 0.3);
-}
-
-/* Pour éviter les problèmes de sélection au clic */
-.station-option:active {
-  background: rgba(52, 152, 219, 0.4);
-}
-
-/* Style pour la scrollbar */
-.station-dropdown::-webkit-scrollbar {
-  width: 8px;
-}
-
-.station-dropdown::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.station-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(52, 152, 219, 0.5);
-  border-radius: 4px;
-}
-
-.station-dropdown::-webkit-scrollbar-thumb:hover {
-  background: rgba(52, 152, 219, 0.7);
 }
 </style>
