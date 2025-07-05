@@ -71,18 +71,17 @@ onMounted(() => {
   </div>
 </template>
 
-
 <style scoped>
 .disruptions-container {
   max-height: 40vh;
   overflow-y: auto;
   background-color: transparent;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--sidebar-text, rgba(255, 255, 255, 0.9));
   font-size: 0.9rem;
   padding: 0.5rem 1rem;
   /* Pour Firefox */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.5) transparent;
+  scrollbar-color: var(--sidebar-text-secondary, rgba(255, 255, 255, 0.5)) transparent;
 }
 
 .disruption-list {
@@ -95,14 +94,14 @@ onMounted(() => {
   margin-bottom: 1.2rem;
   padding: 12px 15px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border-left: 4px solid #e74c3c;
+  background: var(--sidebar-bg-secondary, rgba(255, 255, 255, 0.08));
+  border-left: 4px solid var(--sidebar-danger, #e74c3c);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .disruption-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 8px var(--sidebar-shadow, rgba(0, 0, 0, 0.15));
 }
 
 .disruption-header {
@@ -113,19 +112,19 @@ onMounted(() => {
 
 .disruption-header strong {
   font-weight: 600;
-  color: #fff;
+  color: var(--sidebar-text, #fff);
   font-size: 14px;
 }
 
 .warning-icon {
-  color: #e74c3c;
+  color: var(--sidebar-danger, #e74c3c);
   margin-right: 8px;
   font-size: 18px;
 }
 
 .disruption-message {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--sidebar-text-secondary, rgba(255, 255, 255, 0.8));
   line-height: 1.5;
 }
 
@@ -141,35 +140,35 @@ onMounted(() => {
 .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #3498db;
+  border: 3px solid var(--sidebar-text-secondary, rgba(255, 255, 255, 0.2));
+  border-top-color: var(--sidebar-accent, #3498db);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 10px;
 }
 
 .loading-text {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--sidebar-text-secondary, rgba(255, 255, 255, 0.7));
   font-size: 14px;
 }
 
 .error-container {
   text-align: center;
   padding: 1.5rem;
-  background: rgba(231, 76, 60, 0.1);
+  background: var(--sidebar-error-bg, rgba(231, 76, 60, 0.1));
   border-radius: 8px;
   margin: 0.5rem;
 }
 
 .error-message {
-  color: #e74c3c;
+  color: var(--sidebar-danger, #e74c3c);
   margin-bottom: 12px;
   font-size: 14px;
 }
 
 .retry-button {
-  background-color: #3498db;
-  color: white;
+  background-color: var(--sidebar-accent, #3498db);
+  color: var(--sidebar-button-text, white);
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
@@ -187,27 +186,27 @@ onMounted(() => {
 }
 
 .retry-button:hover {
-  background-color: #2980b9;
+  background-color: var(--sidebar-accent-hover, #2980b9);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 8px var(--sidebar-shadow, rgba(0, 0, 0, 0.1));
 }
 
 .no-disruptions {
   text-align: center;
   padding: 1.5rem;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--sidebar-text-secondary, rgba(255, 255, 255, 0.8));
   font-size: 14px;
 }
 
 .check-icon {
-  color: #2ecc71;
+  color: var(--sidebar-success, #2ecc71);
   font-size: 32px;
   margin-bottom: 10px;
   display: block;
 }
 
 .status-message {
-  color: #2ecc71;
+  color: var(--sidebar-success, #2ecc71);
   font-size: 12px;
   margin-top: 6px;
 }
@@ -226,11 +225,11 @@ onMounted(() => {
 }
 
 .disruptions-container::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: var(--sidebar-text-secondary, rgba(255, 255, 255, 0.3));
   border-radius: 3px;
 }
 
 .disruptions-container::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.5);
+  background-color: var(--sidebar-text-secondary, rgba(255, 255, 255, 0.5));
 }
 </style>
