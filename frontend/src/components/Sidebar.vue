@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop>
+  <div class="sidebar" :style="cssVars" :class="{ 'light-mode': isLight}" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop>
     <div class="sidebar-header">
       <div class="logo-container">
         <span class="material-icons logo-icon">directions_subway</span>
@@ -42,7 +42,7 @@
             </div>
           <div class="toggle-switch">
             <label class="switch-label">
-              <input type="checkbox" class="checkbox">
+              <input type="checkbox" class="checkbox" v-model="isLight">
               <span class="slider"></span>
             </label>
           </div>
@@ -74,15 +74,29 @@
 <script setup>
 import Traffic from "./Traffic.vue";
 import SearchOverlay from "./SearchOverlay.vue";
-import { onMounted, ref } from 'vue';
+import {computed, onMounted, ref} from 'vue';
 
 const showSettings = ref(false);
 const trafficComponent = ref(null);
+const isLight = ref(false)
 
+const cssVars = computed(() => ({
+  '--sidebar-bg': isLight.value ? '#f8f9fa' : '#2c3e50',
+  '--sidebar-text': isLight.value ? '#2c3e50' : '#ffffff',
+  '--sidebar-text-secondary': isLight.value ? 'rgba(44, 62, 80, 0.7)' : 'rgba(255, 255, 255, 0.7)',
+  '--sidebar-border': isLight.value ? 'rgba(52, 58, 64, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+  '--sidebar-bg-secondary': isLight.value ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.15)',
+  '--sidebar-accent': '#3498db',
+  '--sidebar-accent-hover': '#2980b9',
+  '--sidebar-danger': isLight.value ? '#c0392b' : '#e74c3c',
+  '--sidebar-success': '#2ecc71',
+  '--sidebar-shadow': isLight.value ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.15)',
+  '--sidebar-error-bg': isLight.value ? 'rgba(192, 57, 43, 0.1)' : 'rgba(231, 76, 60, 0.1)',
+  '--sidebar-button-text': isLight.value ? '#ffffff' : '#ffffff'
+}));
 const toggleSettings = () => {
   showSettings.value = !showSettings.value;
 };
-
 const refreshTraffic = () => {
   // Animer l'icône de rafraîchissement
   const refreshIcon = document.querySelector('.refresh-icon');
@@ -129,6 +143,12 @@ onMounted(() => {
   animation: slideIn 0.4s ease-out forwards;
 }
 
+.sidebar.light-mode {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #2c3e50;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
 .sidebar-header {
   padding: 24px 20px 16px;
   background: rgba(0, 0, 0, 0.2);
@@ -136,6 +156,11 @@ onMounted(() => {
   position: relative;
   display: flex;
   flex-direction: column;
+}
+
+.sidebar.light-mode .sidebar-header {
+  background: rgba(255, 255, 255, 0.8);
+  border-bottom: 1px solid rgba(52, 58, 64, 0.1);
 }
 
 .logo-container {
@@ -149,6 +174,10 @@ onMounted(() => {
   color: #3498db;
 }
 
+.sidebar.light-mode .logo-icon {
+  color: #2c3e50;
+}
+
 .settings-icon {
   position: absolute;
   top: 24px;
@@ -157,6 +186,10 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.sidebar.light-mode .settings-icon {
+  color: rgba(44, 62, 80, 0.7);
 }
 
 .settings-icon:hover {
@@ -183,40 +216,6 @@ onMounted(() => {
   margin-top: 8px;
 }
 
-.menu-section {
-  padding: 20px 0;
-  overflow-y: auto;
-  flex-grow: 1;
-}
-
-/* Style personnalisé pour la barre de défilement de la section menu */
-.menu-section::-webkit-scrollbar {
-  width: 6px;
-}
-
-.menu-section::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.menu-section::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 3px;
-}
-
-.menu-section::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.5);
-}
-
-/* Firefox */
-.menu-section {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-}
-
-.menu-category {
-  margin-bottom: 20px;
-}
-
 .menu-category h3 {
   font-size: 14px;
   text-transform: uppercase;
@@ -226,28 +225,8 @@ onMounted(() => {
   letter-spacing: 1px;
 }
 
-.menu-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 24px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-left: 3px solid transparent;
-  position: relative;
-  transform: translateX(-10px);
-  opacity: 0;
-  animation: fadeInRight 0.3s ease forwards;
-  animation-delay: calc(0.05s * var(--index, 0));
-}
-
-.menu-item:hover {
-  background: rgba(52, 152, 219, 0.1);
-  border-left-color: rgba(52, 152, 219, 0.7);
-}
-
-.menu-item.active {
-  background: rgba(52, 152, 219, 0.2);
-  border-left-color: #3498db;
+.sidebar.light-mode .menu-category h3 {
+  color: rgba(44, 62, 80, 0.6);
 }
 
 .menu-item .material-icons {
@@ -256,26 +235,24 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.85);
 }
 
+.sidebar.light-mode .menu-item .material-icons {
+  color: rgba(44, 62, 80, 0.85);
+}
+
 .menu-item span:not(.material-icons):not(.menu-badge) {
   font-size: 16px;
   font-weight: 400;
-}
-
-.menu-badge {
-  position: absolute;
-  right: 24px;
-  background: #e74c3c;
-  color: white;
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: bold;
 }
 
 .traffic-section {
   background: rgba(0, 0, 0, 0.15);
   margin-top: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar.light-mode .traffic-section {
+  background: rgba(255, 255, 255, 0.9);
+  border-top: 1px solid rgba(52, 149, 219, 0.2);
 }
 
 .section-header {
@@ -296,11 +273,22 @@ onMounted(() => {
   color: #e74c3c;
 }
 
+.sidebar.light-mode .section-title .material-icons {
+  color: #c0392b;
+}
+
 .section-header h2 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
+}
+
+.sidebar.light-mode .section-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(44, 62, 80, 0.9);
 }
 
 .refresh-icon {
@@ -310,14 +298,17 @@ onMounted(() => {
   transition: transform 0.5s ease, color 0.3s ease;
 }
 
+.sidebar.light-mode .refresh-icon {
+  color: rgba(44, 62, 80, 0.6);
+}
+
 .refresh-icon:hover {
   transform: rotate(180deg);
   color: rgba(255, 255, 255, 0.9);
 }
 
-.refresh-icon.refreshing {
-  animation: spin 1s linear infinite;
-  color: #3498db;
+.sidebar.light-mode .refresh-icon:hover {
+  color: rgba(44, 62, 80, 0.9);
 }
 
 @keyframes spin {
@@ -338,6 +329,10 @@ onMounted(() => {
   animation: fadeIn 0.3s ease;
 }
 
+.sidebar.light-mode .settings-panel {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
 .settings-header {
   display: flex;
   justify-content: space-between;
@@ -347,6 +342,11 @@ onMounted(() => {
   background: rgba(0, 0, 0, 0.2);
 }
 
+.sidebar.light-mode .settings-header {
+  border-bottom: 1px solid rgba(52, 58, 64, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+}
+
 .settings-header h3 {
   margin: 0;
   font-size: 20px;
@@ -354,10 +354,21 @@ onMounted(() => {
   color: white;
 }
 
+.sidebar.light-mode .settings-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
 .close-settings {
   cursor: pointer;
   color: rgba(255, 255, 255, 0.7);
   transition: color 0.2s ease;
+}
+
+.sidebar.light-mode .close-settings {
+  color: rgba(44, 62, 80, 0.7);
 }
 
 .close-settings:hover {
@@ -383,6 +394,11 @@ onMounted(() => {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.sidebar.light-mode .settings-group h4 {
+  color: rgba(44, 62, 80, 0.7);
+  border-bottom: 1px solid rgba(52, 58, 64, 0.1);
+}
+
 .setting-item {
   display: flex;
   justify-content: space-between;
@@ -390,6 +406,10 @@ onMounted(() => {
   margin-bottom: 15px;
   padding-bottom: 15px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sidebar.light-mode .setting-item {
+  border-bottom: 1px solid rgba(52, 58, 64, 0.05);
 }
 
 .setting-label {
@@ -403,13 +423,32 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.8);
 }
 
+.sidebar.light-mode .setting-label .material-icons {
+  color: rgba(44, 62, 80, 0.8);
+}
+
+.setting-label span:not(.material-icons) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sidebar.light-mode .setting-label span:not(.material-icons) {
+  color: rgba(44, 62, 80, 0.9);
+}
+
 .setting-select {
   background: rgba(255, 255, 255, 0.1);
   border: none;
   color: white;
   padding: 8px 12px;
+  margin-right: 13px;
   border-radius: 4px;
   outline: none;
+}
+
+.sidebar.light-mode .setting-select {
+  background: rgba(52, 58, 64, 0.1);
+  color: #2c3e50;
+  border: 1px solid rgba(52, 149, 219, 0.3);
 }
 
 .setting-select option {
@@ -417,10 +456,19 @@ onMounted(() => {
   color: white;
 }
 
+.sidebar.light-mode .setting-select option {
+  background: #f8f9fa;
+  color: #2c3e50;
+}
+
 .about-info {
   color: rgba(255, 255, 255, 0.7);
   font-size: 14px;
   line-height: 1.5;
+}
+
+.sidebar.light-mode .about-info {
+  color: rgba(44, 62, 80, 0.7);
 }
 
 .about-info p {
@@ -460,6 +508,11 @@ onMounted(() => {
   flex-grow: 0;
 }
 
+.sidebar.light-mode .planner-section {
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid rgba(52, 149, 219, 0.2);
+}
+
 .traffic-content {
   display: flex;
   flex-direction: column;
@@ -478,7 +531,7 @@ onMounted(() => {
   -ms-touch-action: pan-y;
 }
 
-.sidebar input, 
+.sidebar input,
 .sidebar button,
 .sidebar select {
   touch-action: manipulation; /* Optimise l'interaction tactile pour les contrôles */
@@ -491,20 +544,21 @@ onMounted(() => {
   overscroll-behavior: contain; /* Empêche le défilement de se propager */
 }
 
-/* Made by Madflows */
+/* Toggle Switch - Made by Madflows */
 .toggle-switch {
+  display: block;
   position: relative;
   width: 100px;
   height: 30px;
   --light: #d8dbe0;
-  --dark: black;
+  --dark: #000000;   /* soit #2c3e50 */
   --link: rgb(27, 129, 112);
   --link-hover: rgb(24, 94, 82);
 }
 
 .switch-label {
   display: block;
-  position: absolute;
+  position: relative;
   width: 70%;
   height: 30px;
   background-color: var(--dark);
@@ -513,7 +567,7 @@ onMounted(() => {
 }
 
 .checkbox {
-  position: absolute;
+  position: relative;
   display: none;
 }
 
@@ -545,11 +599,37 @@ onMounted(() => {
 }
 
 .checkbox:checked ~ .slider::before {
-  -webkit-transform: translateX(50px);
-  -ms-transform: translateX(50px);
+  -webkit-transform: translateX(40px);
+  -ms-transform: translateX(40px);
   transform: translateX(40px);
-  background-color: black;
+  background-color: var(--dark);
   -webkit-box-shadow: none;
   box-shadow: none;
+}
+
+/* Styles spécifiques pour le mode clair du toggle switch */
+.sidebar.light-mode .toggle-switch {
+  --light: #2c3e50;
+  --dark: #ecf0f1;
+}
+
+.sidebar.light-mode .switch-label {
+  background-color: var(--dark);
+  border: 1px solid rgb(0, 0, 0);
+}
+
+.sidebar.light-mode .checkbox:checked ~ .slider {
+  background-color: var(--light);
+}
+
+.sidebar.light-mode .slider::before {
+  background-color: #2c3e50;
+  -webkit-box-shadow: inset 12px -4px 0px 0px #2c3e50;
+}
+
+.sidebar.light-mode .checkbox:checked ~ .slider::before {
+  background-color: white;
+  -webkit-box-shadow: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 </style>
