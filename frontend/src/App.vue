@@ -47,7 +47,7 @@ const toggleConnectivity = () => {
   top: 20px;
   right: 20px;
   z-index: 1001;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(90deg, #3498db, #2ecc71);
   color: white;
   border: none;
   border-radius: 50px;
