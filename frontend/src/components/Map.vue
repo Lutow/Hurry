@@ -155,7 +155,7 @@ const loadMapData = async (map) => {
       color: '#000000',
       fillColor: '#FFFFFF',
       fillOpacity: 1,
-      weight: 1
+      weight: 3
       })
     },
     onEachFeature: (feature, layer) => {
@@ -909,7 +909,7 @@ const showAllElements = () => {
           color: '#000000',
           fillColor: '#FFFFFF',
           fillOpacity: 1,
-          weight: 1
+          weight: 3
         })
       },
       onEachFeature: (feature, layer) => {
