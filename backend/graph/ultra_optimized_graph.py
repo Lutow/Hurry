@@ -8,6 +8,7 @@ import pickle
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sqlite3
+from pathlib import Path
 from functools import lru_cache
 
 # Configuration du logging
@@ -168,7 +169,7 @@ class UltraOptimizedGraphGTFS:
             ''', transfers_data)
             
             # Traiter les arêtes en parallèle
-            logger.info("Traitement des arêtes en parallèle...")
+            logger.info("Traitement des aretes en parallèle...")
             self._process_edges_parallel(conn)
             
             conn.commit()
@@ -391,40 +392,7 @@ class UltraOptimizedGraphGTFS:
         if not route_data.empty:
             return route_data.iloc[0].to_dict()
         return None
-    
-    def get_statistics(self) -> Dict:
-        """Obtient des statistiques sur le système"""
-        conn = sqlite3.connect(self.db_path)
-        
-        try:
-            stats = {}
-            
-            # Statistiques de base
-            # Toujours compter les stations depuis la table stops SQLite (321 uniques)
-            cursor.execute('SELECT COUNT(*) FROM stops')
-            stats['total_stations'] = cursor.fetchone()[0]
-            stats['total_routes'] = len(self.routes)
-            stats['total_transfers'] = len(self.transfers)
-            
-            # Statistiques depuis la DB
-            cursor = conn.cursor()
-            
-            cursor.execute('SELECT COUNT(*) FROM edges')
-            stats['total_edges'] = cursor.fetchone()[0]
-            
-            cursor.execute('''
-                SELECT route_short_name, COUNT(*) as edge_count
-                FROM edges
-                GROUP BY route_short_name
-                ORDER BY edge_count DESC
-            ''')
-            
-            stats['edges_by_route'] = dict(cursor.fetchall())
-            
-            return stats
-            
-        finally:
-            conn.close()
+
     
     def clear_database(self):
         """Supprime la base de données pour forcer une reconstruction"""
@@ -464,7 +432,7 @@ class UltraOptimizedGraphGTFS:
             edges_count = cursor.fetchone()[0]
             
             if edges_count == 0:
-                logger.warning("⚠️ Aucune arête dans la base, construction rapide avec transferts uniquement...")
+                logger.warning("[AVERTISSEMENT] Aucune arête dans la base, construction rapide avec transferts uniquement...")
                 # Utiliser seulement les transferts pour un test rapide
                 for _, transfer in self.transfers.iterrows():
                     if transfer['from_stop_id'] in graph.nodes and transfer['to_stop_id'] in graph.nodes:
@@ -483,7 +451,7 @@ class UltraOptimizedGraphGTFS:
                         )
                 
                 logger.info(f"✅ Graphe rapide créé: {len(graph.nodes)} stations, {len(graph.edges)} connexions (transferts uniquement)")
-                logger.warning("⚠️ ATTENTION: Ce graphe ne contient que les transferts. Pour une connexité complète, la base de données doit contenir les arêtes métro.")
+                logger.warning("[AVERTISSEMENT] ATTENTION: Ce graphe ne contient que les transferts. Pour une connexité complète, la base de données doit contenir les arêtes métro.")
                 return graph
             
             # Ajouter toutes les arêtes de métro
@@ -551,7 +519,7 @@ class UltraOptimizedGraphGTFS:
         # (ignore la direction des arêtes)
         is_connected = nx.is_weakly_connected(self._full_graph)
         
-        logger.info(f"📊 Réseau connexe: {'✅ Oui' if is_connected else '❌ Non'}")
+        logger.info(f"[STATISTIQUES] Réseau connexe: {'OUI' if is_connected else 'NON'}")
         return is_connected
     
     def get_connectivity_details(self) -> Dict:
@@ -603,48 +571,102 @@ class UltraOptimizedGraphGTFS:
         logger.info(f"📊 Analyse terminée: {details['number_of_components']} composante(s), plus grande: {details['largest_component_size']} stations")
         
         return details
-
-
-    def get_shortest_path(self, from_stop_id: str, to_stop_id: str) -> Optional[Dict]:
-        """
-        Calcule le plus court chemin entre deux arrêts en utilisant le poids (temps de trajet ou de transfert).
-        """
-        logger.info(f"🔍 Calcul du plus court chemin entre {from_stop_id} et {to_stop_id}...")
-
-        # Assure-toi que le graphe complet est bien construit
-        if not hasattr(self, '_full_graph') or self._full_graph is None:
-            self._full_graph = self.build_full_network_graph()
-
-        G = self._full_graph
-
-        logger.info(f"🧩 Le graphe contient {len(G.nodes)} nœuds.")
-        logger.info(f"🧩 Nœuds disponibles (stop_id): {list(G.nodes)[:20]} ...")  # Affiche les 20 premiers
-        if from_stop_id not in G or to_stop_id not in G:
-            logger.warning("Un ou les deux arrêts ne sont pas présents dans le graphe.")
-            return None
-
+    
+    def get_all_edges_for_geojson(self) -> List[Dict]:
+        """Retourne toutes les arêtes pour la génération de GeoJSON avec les temps de trajet mis à jour."""
+        edges = []
+        
+        if not os.path.exists(self.db_path):
+            logger.error(f"Base de données non trouvée: {self.db_path}")
+            return edges
+        
         try:
-            path = nx.astar_path(G, source=from_stop_id, target=to_stop_id, weight='weight')
-            total_weight = nx.astar_path_length(G, source=from_stop_id, target=to_stop_id, weight='weight')
-
-            # Extraire les arêtes parcourues
-            edges = []
-            for i in range(len(path) - 1):
-                edge_data = G.get_edge_data(path[i], path[i + 1])
-                edges.append({
-                    'from': path[i],
-                    'to': path[i + 1],
-                    'weight': edge_data.get('weight'),
-                    'route': edge_data.get('route_name', ''),
-                    'type': edge_data.get('edge_type', 'metro')
-                })
-
-            return {
-                'path': path,
-                'edges': edges,
-                'total_travel_time': total_weight
-            }
-        except nx.NetworkXNoPath:
-            logger.warning(f"Aucun chemin trouvé entre {from_stop_id} et {to_stop_id}")
-            return None
-
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            
+            # Récupérer toutes les stations avec leurs coordonnées
+            stations_query = "SELECT stop_id, stop_name, stop_lat, stop_lon FROM stops"
+            stations_df = pd.read_sql_query(stations_query, conn)
+            stations_dict = {}
+            for _, station in stations_df.iterrows():
+                stations_dict[station['stop_id']] = {
+                    'name': station['stop_name'],
+                    'lat': station['stop_lat'],
+                    'lon': station['stop_lon']
+                }
+            
+            # Récupérer toutes les arêtes directes depuis la base de données
+            edges_query = """
+                SELECT from_stop_id, to_stop_id, travel_time, route_short_name, route_id
+                FROM edges
+            """
+            cursor = conn.cursor()
+            cursor.execute(edges_query)
+            db_edges = cursor.fetchall()
+            
+            # Récupérer les informations des routes (pour les couleurs)
+            routes_cache = Path(self.data_path) / "routes.pkl"
+            routes_dict = {}
+            if routes_cache.exists():
+                routes_df = pickle.load(open(routes_cache, 'rb'))
+                for _, route in routes_df.iterrows():
+                    routes_dict[route['route_id']] = {
+                        'short_name': route['route_short_name'],
+                        'color': route.get('route_color', 'CCCCCC')
+                    }
+            
+            # Convertir les arêtes directes
+            for edge in db_edges:
+                from_stop = edge['from_stop_id']
+                to_stop = edge['to_stop_id']
+                
+                if from_stop in stations_dict and to_stop in stations_dict:
+                    route_info = routes_dict.get(edge['route_id'], {
+                        'short_name': edge['route_short_name'],
+                        'color': 'CCCCCC'
+                    })
+                    
+                    edges.append({
+                        'from_stop': from_stop,
+                        'to_stop': to_stop,
+                        'from_name': stations_dict[from_stop]['name'],
+                        'to_name': stations_dict[to_stop]['name'],
+                        'from_coords': [stations_dict[from_stop]['lon'], stations_dict[from_stop]['lat']],
+                        'to_coords': [stations_dict[to_stop]['lon'], stations_dict[to_stop]['lat']],
+                        'route_id': edge['route_id'],
+                        'route_info': route_info,
+                        'travel_time': edge['travel_time'],  # Temps de trajet mis à jour
+                        'type': 'direct',
+                        'color': f"#{route_info.get('color', 'CCCCCC')}"
+                    })
+            
+            # Récupérer les transferts
+            transfers_query = "SELECT from_stop_id, to_stop_id, transfer_time FROM transfers"
+            cursor.execute(transfers_query)
+            db_transfers = cursor.fetchall()
+            
+            # Convertir les transferts
+            for transfer in db_transfers:
+                from_stop = transfer['from_stop_id']
+                to_stop = transfer['to_stop_id']
+                
+                if from_stop in stations_dict and to_stop in stations_dict:
+                    edges.append({
+                        'from_stop': from_stop,
+                        'to_stop': to_stop,
+                        'from_name': stations_dict[from_stop]['name'],
+                        'to_name': stations_dict[to_stop]['name'],
+                        'from_coords': [stations_dict[from_stop]['lon'], stations_dict[from_stop]['lat']],
+                        'to_coords': [stations_dict[to_stop]['lon'], stations_dict[to_stop]['lat']],
+                        'type': 'transfer',
+                        'color': '#FF0000',  # Rouge pour les transferts
+                        'transfer_time': transfer['transfer_time']
+                    })
+            
+            conn.close()
+            logger.info(f"Récupéré {len(edges)} arêtes depuis la base de données SQLite")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération des arêtes: {e}")
+        
+        return edges
