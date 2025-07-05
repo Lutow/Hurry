@@ -1,4 +1,3 @@
-import sqlite3
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,18 +8,22 @@ from backend.graph.GeoJsonification_with_edges import (
     find_connected_stations
 )
 from backend.idfm_line_reports_router import router as line_reports_router
+from backend.routes_router import router as routes_router
 from backend.graph.graph import GrapheGTFS
 from backend.graph.optimized_graph import OptimizedGraphGTFS
 from backend.graph.ultra_optimized_graph import UltraOptimizedGraphGTFS
 from backend.graph.unique_edges_graph import UniqueEdgesMetroGraph
+from backend.utils.logger import log_info, log_warning, log_error
 import time
 import logging
+import sqlite3
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 app = FastAPI()
 app.include_router(line_reports_router)
+app.include_router(routes_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,11 +59,44 @@ def get_ultra_graph():
     if ultra_graph is None:
         logger.info("Initialisation du graphe ultra-optimise...")
         try:
-            ultra_graph = UltraOptimizedGraphGTFS("backend/graph/IDFM-gtfs_metro_pkl")
+            # Tentons d'abord avec UltraOptimizedGraphGTFS
+            try:
+                ultra_graph = UltraOptimizedGraphGTFS("backend/graph/IDFM-gtfs_metro_pkl")
+                logger.info("✅ Graphe ultra-optimisé chargé avec succès")
+                
+                # Testons que le graphe est utilisable
+                try:
+                    ultra_graph.connected()
+                    logger.info("✅ Vérification de connexité réussie")
+                except Exception as e:
+                    logger.error(f"Le graphe ultra-optimisé a été chargé mais ne peut pas vérifier la connexité: {e}")
+                    raise ValueError("Graphe incompatible avec les vérifications de connexité")
+                    
+            except Exception as e:
+                if "processus" in str(e) and "accéder au fichier" in str(e):
+                    # Problème d'accès fichier, probablement DB verrouillée
+                    logger.warning(f"La base de données est verrouillée: {e}")
+                    logger.warning("Fallback vers OptimizedGraphGTFS sans base de données...")
+                else:
+                    logger.error(f"Erreur lors de l'initialisation du graphe ultra-optimise: {e}")
+                
+                # Fallback vers la version standard dans tous les cas
+                logger.info("Utilisation du graphe optimisé (fallback)")
+                ultra_graph = OptimizedGraphGTFS("backend/graph/IDFM-gtfs_metro_pkl")
+                logger.info("✅ Graphe optimisé (fallback) chargé avec succès")
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation du graphe ultra-optimise: {e}")
-            # Fallback vers la version standard si erreur
+            logger.error(f"Erreur critique lors de l'initialisation du graphe: {e}")
+            # En dernier recours, création d'un graphe très basique et vérification
             ultra_graph = OptimizedGraphGTFS("backend/graph/IDFM-gtfs_metro_pkl")
+            
+            # S'assurer que le graphe de secours est bien initialisé
+            try:
+                connectivity_test = ultra_graph.connected()
+                logger.info(f"Graphe de secours testé avec succès. Réseau connexe: {connectivity_test}")
+            except Exception as e:
+                logger.error(f"Erreur critique: même le graphe de secours ne fonctionne pas: {e}")
+                # Si même le graphe de secours ne fonctionne pas, lever une exception
+                raise RuntimeError("Impossible d'initialiser un graphe fonctionnel pour l'API")
     return ultra_graph
 
 
@@ -220,7 +256,7 @@ def get_stops_geojson():
     except Exception as e:
         total_time = time.time() - start_time
         error_message = f"Erreur après {total_time:.2f}s: {str(e)}"
-        print("🔥 ERROR in /geo/stops:", error_message)
+        log_error(f"/geo/stops: {error_message}")
         raise HTTPException(status_code=500, detail=error_message)
 
 
@@ -350,7 +386,7 @@ def get_stops_by_zone(
     except Exception as e:
         total_time = time.time() - start_time
         error_message = f"Erreur après {total_time:.2f}s: {str(e)}"
-        print("🔥 ERROR in /geo/stops_by_zone:", error_message)
+        log_error(f"/geo/stops_by_zone: {error_message}")
         raise HTTPException(status_code=500, detail=error_message)
 
 
@@ -510,11 +546,12 @@ def get_unique_edges():
     try:
         logger.info("Récupération des arêtes uniques...")
 
-        g = get_unique_graph()
+        # Utiliser UltraOptimizedGraph au lieu de UniqueEdgesMetroGraph pour avoir les temps mis à jour
+        g = get_ultra_graph()
         if g is None:
-            raise HTTPException(status_code=500, detail="Graphe avec arêtes uniques non disponible")
+            raise HTTPException(status_code=500, detail="Graphe ultra-optimisé non disponible")
 
-        # Obtenir toutes les arêtes pour GeoJSON
+        # Obtenir toutes les arêtes pour GeoJSON avec les temps de trajet mis à jour
         edges = g.get_all_edges_for_geojson()
 
         # Construire le GeoJSON
@@ -544,7 +581,8 @@ def get_unique_edges():
             if edge['type'] == 'direct':
                 feature['properties'].update({
                     "route_id": edge['route_id'],
-                    "route_short_name": edge['route_info'].get('short_name', 'N/A')
+                    "route_short_name": edge['route_info'].get('short_name', 'N/A'),
+                    "travel_time": edge.get('travel_time', 120)  # Ajout du temps de trajet
                 })
             elif edge['type'] == 'transfer':
                 feature['properties']['transfer_time'] = edge.get('transfer_time', 180)
@@ -810,53 +848,179 @@ def get_network_stats():
         raise HTTPException(status_code=500, detail=error_message)
 
 
+
 @app.get("/api/stops/list")
 def get_all_stops():
+    """
+    API principale pour récupérer les stations de métro depuis metro_graph.db
+    """
     try:
-        g = get_ultra_graph()
-        conn = sqlite3.connect(g.db_path)
+        import os.path
+        
+        # Utiliser directement la base de données SQLite
+        db_path = os.path.join("backend", "graph", "IDFM-gtfs_metro_pkl", "metro_graph.db")
+        
+        if not os.path.exists(db_path):
+            # Essayer avec un autre chemin relatif
+            db_path = os.path.join("graph", "IDFM-gtfs_metro_pkl", "metro_graph.db")
+            if not os.path.exists(db_path):
+                # Fallback vers la méthode avec le graphe
+                logger.warning("Base de données non trouvée, tentative avec le graphe...")
+                g = get_ultra_graph()
+                conn = sqlite3.connect(g.db_path)
+            else:
+                conn = sqlite3.connect(db_path)
+        else:
+            conn = sqlite3.connect(db_path)
 
         stops = []
         cursor = conn.cursor()
-        cursor.execute("SELECT stop_id, stop_name FROM stops")
+        cursor.execute("SELECT stop_id, stop_name FROM stops ORDER BY stop_name")
         rows = cursor.fetchall()
 
         for row in rows:
+            stop_name = row[1]
+            # Nettoyer le nom de la station et gérer l'encodage
+            if isinstance(stop_name, bytes):
+                stop_name = stop_name.decode('utf-8', errors='replace')
+            stop_name = stop_name.strip()
+            
             stops.append({
                 "stop_id": row[0],
-                "stop_name": row[1]
+                "stop_name": stop_name
             })
 
         conn.close()
+        logger.info(f"✅ {len(stops)} stations de métro récupérées avec succès")
         return {"stops": stops}
 
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des stops: {e}")
         raise HTTPException(status_code=500, detail="Erreur lors de la récupération des stops")
+    
 
-
-@app.get("/api/shortest_path")
-def shortest_path(from_stop_id: str = Query(..., description="ID de la station de départ"),
-                  to_stop_id: str = Query(..., description="ID de la station d'arrivée")):
-    start_time = time.time()
-
+@app.get("/api/stops/basic")
+def get_basic_stops():
+    """
+    Une API simplifiée pour récupérer une liste de stations hardcodées
+    à utiliser en cas d'erreur avec la base SQLite
+    """
     try:
-        logger.info(f"🔍 Requête de plus court chemin entre {from_stop_id} et {to_stop_id}")
+        # Liste des principales stations de métro parisien
+        stations = [
+            {"stop_id": "RATPI_1", "stop_name": "Château de Vincennes"},
+            {"stop_id": "RATPI_2", "stop_name": "Nation"},
+            {"stop_id": "RATPI_3", "stop_name": "Gare de Lyon"},
+            {"stop_id": "RATPI_4", "stop_name": "Châtelet"},
+            {"stop_id": "RATPI_5", "stop_name": "Louvre-Rivoli"},
+            {"stop_id": "RATPI_6", "stop_name": "Champs-Élysées"},
+            {"stop_id": "RATPI_7", "stop_name": "Charles de Gaulle-Étoile"},
+            {"stop_id": "RATPI_8", "stop_name": "La Défense"},
+            {"stop_id": "RATPI_9", "stop_name": "Porte Dauphine"},
+            {"stop_id": "RATPI_10", "stop_name": "Porte de Clignancourt"},
+            {"stop_id": "RATPI_11", "stop_name": "Gare du Nord"},
+            {"stop_id": "RATPI_12", "stop_name": "Montparnasse-Bienvenüe"},
+            {"stop_id": "RATPI_13", "stop_name": "Saint-Lazare"},
+            {"stop_id": "RATPI_14", "stop_name": "Bastille"},
+            {"stop_id": "RATPI_15", "stop_name": "Place d'Italie"},
+            {"stop_id": "RATPI_16", "stop_name": "Denfert-Rochereau"},
+            {"stop_id": "RATPI_17", "stop_name": "Gare de l'Est"},
+            {"stop_id": "RATPI_18", "stop_name": "Opéra"},
+            {"stop_id": "RATPI_19", "stop_name": "République"},
+            {"stop_id": "RATPI_20", "stop_name": "Stalingrad"}
+        ]
+        return {"stops": stations}
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des stations basiques: {e}")
+        return {"stops": []}  # Renvoyer une liste vide en cas d'erreur
+    
 
-        g = get_ultra_graph()
-        result = g.get_shortest_path(from_stop_id, to_stop_id)
 
-        if not result:
-            raise HTTPException(status_code=404, detail="Chemin non trouvé ou stations inconnues")
+@app.get("/api/stops/all")
+def get_all_stops_from_db():
+    """
+    API qui charge toutes les stations de métro directement depuis metro_graph.db
+    """
+    try:
+        import os.path
+        
+        # Chemin vers la base de données SQLite des stations de métro
+        db_path = os.path.join("backend", "graph", "IDFM-gtfs_metro_pkl", "metro_graph.db")
+        logger.info(f"Chargement des stations de métro depuis: {db_path}")
 
-        result["metadata"] = {
-            "processing_time": round(time.time() - start_time, 2),
-            "from": from_stop_id,
-            "to": to_stop_id
-        }
+        if not os.path.exists(db_path):
+            logger.error(f"Le fichier {db_path} n'existe pas!")
+            # Essayer avec un autre chemin relatif
+            db_path = os.path.join("graph", "IDFM-gtfs_metro_pkl", "metro_graph.db")
+            if not os.path.exists(db_path):
+                raise FileNotFoundError(f"La base de données des stations de métro n'a pas été trouvée")
+        
+        stops = []
+        conn = sqlite3.connect(db_path)
+        # S'assurer que SQLite gère correctement l'encodage UTF-8
+        conn.execute("PRAGMA encoding = 'UTF-8'")
+        cursor = conn.cursor()
+        
+        # Récupérer toutes les stations de métro depuis la table stops
+        cursor.execute("SELECT stop_id, stop_name FROM stops ORDER BY stop_name")
+        rows = cursor.fetchall()
 
-        return JSONResponse(content=result)
+        for row in rows:
+            stop_name = row[1]
+            # Nettoyer le nom de la station
+            if isinstance(stop_name, bytes):
+                stop_name = stop_name.decode('utf-8', errors='replace')
+            stop_name = stop_name.strip()
+            
+            stops.append({
+                "stop_id": row[0],
+                "stop_name": stop_name
+            })
+        
+        conn.close()
+        logger.info(f"✅ {len(stops)} stations de métro chargées avec succès depuis la base de données")
+        return {"stops": stops}
 
     except Exception as e:
-        logger.error(f"Erreur lors du calcul du chemin: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Erreur lors du chargement des stations depuis la base de données: {e}")
+        # En cas d'erreur, on renvoie une liste vide avec l'erreur
+        return {"stops": [], "error": str(e)}
+    
+
+@app.get("/api/stops/count")
+def get_stops_count():
+    """
+    API pour vérifier le nombre de stations dans la base de données
+    """
+    try:
+        import os.path
+        
+        db_path = os.path.join("backend", "graph", "IDFM-gtfs_metro_pkl", "metro_graph.db")
+        
+        if not os.path.exists(db_path):
+            db_path = os.path.join("graph", "IDFM-gtfs_metro_pkl", "metro_graph.db")
+            if not os.path.exists(db_path):
+                return {"error": "Base de données non trouvée", "count": 0}
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Compter le nombre de stations
+        cursor.execute("SELECT COUNT(*) FROM stops")
+        count = cursor.fetchone()[0]
+        
+        # Récupérer quelques exemples
+        cursor.execute("SELECT stop_id, stop_name FROM stops LIMIT 5")
+        examples = cursor.fetchall()
+        
+        conn.close()
+        
+        return {
+            "count": count,
+            "examples": [{"stop_id": row[0], "stop_name": row[1]} for row in examples],
+            "db_path": db_path
+        }
+
+    except Exception as e:
+        logger.error(f"Erreur lors du comptage des stations: {e}")
+        return {"error": str(e), "count": 0}
