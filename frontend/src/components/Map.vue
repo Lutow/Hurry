@@ -1,6 +1,5 @@
 <template>
   <div id="map">
-    <SearchOverlay />
     <Sidebar />
     <div v-if="loading" class="loading-overlay">
       <div class="loading-spinner"></div>
@@ -18,10 +17,9 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, provide } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import SearchOverlay from "./SearchOverlay.vue";
 import Sidebar from "./Sidebar.vue";
 
 // Filtrage des doublons de transferts entre deux noms de stations
@@ -68,6 +66,16 @@ const currentEdgesRequest = ref(null)  // Requête pour les arêtes
 const loadingIndicator = ref(null)
 const updatingStations = ref(false)  // Nouvelle variable pour suivre l'état de mise à jour des stations
 const showEdges = ref(true)  // Contrôler l'affichage des arêtes
+const map = ref(null)
+const routeLayer = ref(null)  // Couche pour afficher les itinéraires
+const allStations = ref([])  // Stocker toutes les stations pour le filtrage
+const originalStationsData = ref(null)  // Sauvegarder les données originales des stations
+const originalEdgesData = ref(null)  // Sauvegarder les données originales des arêtes
+const routeDisplayed = ref(false)  // Indique si un trajet est actuellement affiché
+const currentRoute = ref(null)  // Stocke le trajet actuellement affiché
+
+// Fournir l'instance de carte aux composants enfants
+provide('mapInstance', map)
 
 const hideStationsLayer = () => {
   if (stationsLayer.value && !updatingStations.value) {
@@ -130,6 +138,9 @@ const loadMapData = async (map) => {
       finalTime.value = geojson.metadata.processing_time;
       console.log(`Traitement côté serveur: ${finalTime.value}s pour ${geojson.metadata.number_of_stations} stations`);
     }
+
+    // Sauvegarder les données originales pour pouvoir les restaurer plus tard
+    originalStationsData.value = geojson
 
     // Nettoyer la couche précédente si elle existe
     if (stationsLayer.value) {
@@ -203,6 +214,12 @@ const loadMapData = async (map) => {
 
     // Créer un nouvel écouteur d'événement pour la fin du déplacement de la carte
     const onMoveEnd = async () => {
+      // Ne pas recharger les stations si un trajet est actuellement affiché
+      if (routeDisplayed.value) {
+        console.log('Trajet affiché, rechargement des stations ignoré')
+        return
+      }
+      
       const newBounds = map.getBounds()
       const newLatMin = newBounds.getSouth()
       const newLatMax = newBounds.getNorth()
@@ -395,6 +412,9 @@ const loadUniqueEdges = async (map) => {
     //Filtrage frontend des transferts en double
     edgesGeojson.features = filterUniqueTransfers(edgesGeojson.features)
 
+    // Sauvegarder les données originales pour pouvoir les restaurer plus tard
+    originalEdgesData.value = edgesGeojson
+
     // Nettoyer la couche d'arêtes précédente si elle existe
     if (edgesLayer.value) {
       map.removeLayer(edgesLayer.value)
@@ -438,10 +458,12 @@ const loadUniqueEdges = async (map) => {
 
         if (feature.properties.type === 'direct') {
           const routeName = feature.properties.route_short_name || 'N/A'
+          const travelTime = feature.properties.travel_time || 'N/A'
           popupContent += `
             <h4>🚇 Ligne ${routeName}</h4>
             <p><strong>De:</strong> ${feature.properties.from_name}</p>
             <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps:</strong> ${travelTime}s</p>
             <p><strong>Type:</strong> Connexion directe</p>
           `
         } else if (feature.properties.type === 'transfer') {
@@ -493,29 +515,39 @@ const retryLoading = async () => {
 }
 
 const initMap = async () => {
-  const map = L.map('map', {
+  const mapInstance = L.map('map', {
     center: [48.8566, 2.3522],
     zoom: 12,
     zoomControl: false
   })
 
-  L.control.zoom({ position: 'bottomright' }).addTo(map)
+  L.control.zoom({ position: 'bottomright' }).addTo(mapInstance)
 
   // Vérification DOM
   setTimeout(() => {
-    map.invalidateSize()
+    mapInstance.invalidateSize()
   }, 300)
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map)
+  }).addTo(mapInstance)
 
-  await loadMapData(map)
-  await loadUniqueEdges(map)  // Charger les arêtes uniques lors de l'initialisation
+  map.value = mapInstance // Injecter l'instance de carte ici
+
+  await loadMapData(mapInstance)
+  await loadUniqueEdges(mapInstance)  // Charger les arêtes uniques lors de l'initialisation
 }
 
 onMounted(async () => {
   await initMap()
+  // Fournir l'instance de carte correctement après l'initialisation
+  provide('mapInstance', map)
+  
+  // Ajouter les méthodes à l'instance de la carte après l'initialisation
+  if (map.value) {
+    map.value.showOnlyRoute = showOnlyRoute
+    map.value.showAllElements = showAllElements
+  }
 })
 
 // Nettoyage des ressources lorsque le composant est démonté
@@ -578,6 +610,407 @@ const toggleEdges = async () => {
     }
   }
 }
+
+// Fonction pour afficher un itinéraire sur la carte
+const displayRouteOnMap = (route) => {
+  console.log("Route sélectionnée pour affichage:", route);
+  
+  // Si une couche d'itinéraire existe déjà, la supprimer
+  if (routeLayer.value && map.value) {
+    map.value.removeLayer(routeLayer.value);
+  }
+  
+  if (!map.value) {
+    console.error("Carte non initialisée");
+    return;
+  }
+  
+  // Pour la version 1, on va juste mettre en évidence les stations du trajet
+  // Dans une future version, on pourrait récupérer les coordonnées des segments et tracer des lignes
+  
+  // Créer un tableau de points pour les stations impliquées dans l'itinéraire
+  const routeStations = [];
+  
+  // Pour chaque segment, ajouter les stations de départ et d'arrivée
+  route.segments.forEach(segment => {
+    routeStations.push({
+      name: segment.from,
+      type: 'segment-start',
+      line: segment.line
+    });
+    
+    routeStations.push({
+      name: segment.to,
+      type: 'segment-end',
+      line: segment.line
+    });
+  });
+  
+  // TODO: Dans une future version, nous pourrions rechercher les coordonnées réelles des stations
+  // et dessiner une ligne entre elles pour représenter le trajet complet
+  
+  console.log("Stations du trajet à afficher:", routeStations);
+}
+
+// Fonction pour afficher uniquement un trajet spécifique
+const showOnlyRoute = (route) => {
+  console.log('Affichage du trajet uniquement:', route)
+  
+  // Stocker le trajet courant et marquer qu'un trajet est affiché
+  currentRoute.value = route
+  routeDisplayed.value = true
+  
+  if (!originalStationsData.value || !originalEdgesData.value) {
+    console.error('Données originales non disponibles')
+    return
+  }
+  
+  // Masquer toutes les couches existantes
+  if (stationsLayer.value) {
+    map.value.removeLayer(stationsLayer.value)
+    stationsLayer.value = null
+  }
+  if (edgesLayer.value) {
+    map.value.removeLayer(edgesLayer.value)
+    edgesLayer.value = null
+  }
+  
+  // Créer un ensemble des noms de stations du trajet
+  const routeStationNames = new Set()
+  // Stocker les segments pour l'affichage organisé
+  const routeSegments = []
+  
+  // Extraire toutes les stations du trajet
+  if (route.segments) {
+    route.segments.forEach(segment => {
+      routeStationNames.add(segment.from)
+      routeStationNames.add(segment.to)
+      
+      // Ajouter les infos du segment pour l'affichage
+      routeSegments.push({
+        from: segment.from,
+        to: segment.to,
+        line: segment.line
+      })
+    })
+  }
+  
+  console.log('Stations du trajet:', Array.from(routeStationNames))
+  
+  // Filtrer les stations pour ne garder que celles du trajet
+  const routeStationsFeatures = originalStationsData.value.features.filter(feature =>
+    routeStationNames.has(feature.properties.name)
+  )
+  
+  console.log(`Stations filtrées: ${routeStationsFeatures.length} sur ${originalStationsData.value.features.length}`)
+  
+  // Créer une nouvelle couche pour les stations du trajet
+  if (routeStationsFeatures.length > 0) {
+    stationsLayer.value = L.geoJSON({
+      type: 'FeatureCollection',
+      features: routeStationsFeatures
+    }, {
+      pointToLayer: (feature, latlng) => {
+        // Détermine le rôle de la station dans le trajet pour personnaliser l'affichage
+        const stationName = feature.properties.name
+        
+        // Vérifier si la station est un départ ou une arrivée de trajet
+        const isStartOfRoute = route.segments[0].from === stationName
+        const isEndOfRoute = route.segments[route.segments.length - 1].to === stationName
+        
+        // Mise en forme selon le rôle de la station
+        if (isStartOfRoute) {
+          return L.circleMarker(latlng, {
+            radius: 10,
+            fillColor: '#2ecc71', // Vert pour le départ
+            color: '#27ae60',
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 0.9
+          })
+        } else if (isEndOfRoute) {
+          return L.circleMarker(latlng, {
+            radius: 10,
+            fillColor: '#e74c3c', // Rouge pour l'arrivée
+            color: '#c0392b',
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 0.9
+          })
+        } else {
+          // Station intermédiaire
+          return L.circleMarker(latlng, {
+            radius: 8,
+            fillColor: '#3498db', // Bleu pour intermédiaire
+            color: '#2980b9',
+            weight: 3,
+            opacity: 1,
+            fillOpacity: 0.9
+          })
+        }
+      },
+      onEachFeature: (feature, layer) => {
+        const stationName = feature.properties.name
+        
+        // Vérifier le type de station dans l'itinéraire
+        const isStartOfRoute = route.segments[0].from === stationName
+        const isEndOfRoute = route.segments[route.segments.length - 1].to === stationName
+        
+        let stationType = ''
+        if (isStartOfRoute) {
+          stationType = '<span class="station-type-start">Station de départ</span>'
+        } else if (isEndOfRoute) {
+          stationType = '<span class="station-type-end">Station d\'arrivée</span>'
+        } else {
+          stationType = '<span class="station-type-transfer">Correspondance</span>'
+        }
+        
+        layer.bindPopup(`
+          <div class="station-popup highlighted">
+            <h4>📍 ${stationName}</h4>
+            <p><strong>${stationType}</strong></p>
+          </div>
+        `)
+      }
+    })
+    
+    stationsLayer.value.addTo(map.value)
+  }
+  
+  // Filtrer les arêtes pour ne garder que celles du trajet
+  const routeEdgesFeatures = []
+  
+  if (route.segments) {
+    route.segments.forEach(segment => {
+      // Trouver les arêtes correspondant à ce segment
+      const matchingEdges = originalEdgesData.value.features.filter(feature => {
+        const fromName = feature.properties.from_name
+        const toName = feature.properties.to_name
+        
+        return (
+          (fromName === segment.from && toName === segment.to) ||
+          (fromName === segment.to && toName === segment.from) // Bidirectionnel
+        )
+      })
+      
+      routeEdgesFeatures.push(...matchingEdges)
+    })
+  }
+  
+  console.log(`Arêtes filtrées: ${routeEdgesFeatures.length} arêtes trouvées`)
+  
+  // Créer une nouvelle couche pour les arêtes du trajet
+  if (routeEdgesFeatures.length > 0) {
+    edgesLayer.value = L.geoJSON({
+      type: 'FeatureCollection',
+      features: routeEdgesFeatures
+    }, {
+      style: (feature) => {
+        const edgeType = feature.properties.type
+        // Utiliser la couleur de la ligne pour une meilleure correspondance visuelle
+        const color = feature.properties.color || '#e74c3c'
+        
+        // Rechercher le segment correspondant pour adapter le style
+        const fromName = feature.properties.from_name
+        const toName = feature.properties.to_name
+        const isFirstSegment = route.segments[0].from === fromName && route.segments[0].to === toName
+        const isLastSegment = route.segments[route.segments.length-1].from === fromName && route.segments[route.segments.length-1].to === toName
+
+        if (edgeType === 'direct') {
+          // Style pour les connexions directes (sections de ligne de métro)
+          return {
+            color: color,
+            weight: 6, // Plus épais pour une meilleure visibilité
+            opacity: 1,
+            smoothFactor: 1,
+            // Effet d'animation pour les premiers/derniers segments
+            dashArray: (isFirstSegment || isLastSegment) ? null : null,
+            lineCap: 'round'
+          }
+        } else if (edgeType === 'transfer') {
+          // Style pour les correspondances
+          return {
+            color: '#FF6B35',
+            weight: 4,
+            opacity: 1,
+            dashArray: '10, 5', // Tirets plus visibles
+            smoothFactor: 1,
+            lineCap: 'round'
+          }
+        } else {
+          // Style par défaut
+          return {
+            color: '#e74c3c',
+            weight: 5,
+            opacity: 1
+          }
+        }
+      },
+      onEachFeature: (feature, layer) => {
+        let popupContent = `<div class="edge-popup highlighted">`
+
+        if (feature.properties.type === 'direct') {
+          const routeName = feature.properties.route_short_name || 'N/A'
+          const travelTime = feature.properties.travel_time || 'N/A'
+          popupContent += `
+            <h4>🚇 Ligne ${routeName} - TRAJET SÉLECTIONNÉ</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps:</strong> ${travelTime}s</p>
+          `
+        } else if (feature.properties.type === 'transfer') {
+          const transferTime = feature.properties.transfer_time || 'N/A'
+          popupContent += `
+            <h4>🔄 Correspondance - TRAJET SÉLECTIONNÉ</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps:</strong> ${transferTime}s</p>
+          `
+        }
+
+        popupContent += `</div>`
+        layer.bindPopup(popupContent)
+      }
+    })
+    
+    edgesLayer.value.addTo(map.value)
+    
+    // Déplacer les stations au-dessus des arêtes
+    if (stationsLayer.value) {
+      stationsLayer.value.bringToFront()
+    }
+  }
+}
+
+// Fonction pour réafficher tous les éléments
+const showAllElements = () => {
+  console.log('Réaffichage de tous les éléments')
+  
+  // Réinitialiser l'état du trajet affiché
+  routeDisplayed.value = false
+  currentRoute.value = null
+  
+  // Supprimer les couches actuelles
+  if (stationsLayer.value) {
+    map.value.removeLayer(stationsLayer.value)
+    stationsLayer.value = null
+  }
+  if (edgesLayer.value) {
+    map.value.removeLayer(edgesLayer.value)
+    edgesLayer.value = null
+  }
+  
+  // Restaurer les couches originales si disponibles
+  if (originalStationsData.value) {
+    stationsLayer.value = L.geoJSON(originalStationsData.value, {
+      pointToLayer: (feature, latlng) => {
+        return L.circleMarker(latlng, {
+          radius: 6,
+          color: '#000000',
+          fillColor: '#FFFFFF',
+          fillOpacity: 1,
+          weight: 1
+        })
+      },
+      onEachFeature: (feature, layer) => {
+        let popupContent = `<strong>${feature.properties.name || feature.properties.id}</strong>`;
+
+        if (feature.properties.wheelchair_boarding !== undefined) {
+          const accessibilityStatus = {
+            '0': 'Information non disponible',
+            '1': 'Accessible aux fauteuils roulants',
+            '2': 'Non accessible aux fauteuils roulants'
+          }[feature.properties.wheelchair_boarding] || 'Statut inconnu';
+
+          popupContent += `<br><span class="accessibility-info">
+            <i class="accessibility-icon">♿</i> ${accessibilityStatus}
+          </span>`;
+        }
+
+        if (feature.properties.platform_code) {
+          popupContent += `<br>Plateforme: ${feature.properties.platform_code}`;
+        }
+
+        if (feature.properties.zone_id) {
+          popupContent += `<br>Zone: ${feature.properties.zone_id}`;
+        }
+
+        layer.bindPopup(popupContent);
+      }
+    })
+    
+    stationsLayer.value.addTo(map.value)
+  }
+  
+  if (originalEdgesData.value && showEdges.value) {
+    edgesLayer.value = L.geoJSON(originalEdgesData.value, {
+      style: (feature) => {
+        const edgeType = feature.properties.type
+        const color = feature.properties.color || '#CCCCCC'
+
+        if (edgeType === 'direct') {
+          return {
+            color: color,
+            weight: 3,
+            opacity: 0.8,
+            smoothFactor: 1
+          }
+        } else if (edgeType === 'transfer') {
+          return {
+            color: '#FF0000',
+            weight: 2,
+            opacity: 0.6,
+            dashArray: '5, 5',
+            smoothFactor: 1
+          }
+        } else {
+          return {
+            color: '#CCCCCC',
+            weight: 2,
+            opacity: 0.5
+          }
+        }
+      },
+      onEachFeature: (feature, layer) => {
+        let popupContent = `<div class="edge-popup">`
+
+        if (feature.properties.type === 'direct') {
+          const routeName = feature.properties.route_short_name || 'N/A'
+          const travelTime = feature.properties.travel_time || 'N/A'
+          popupContent += `
+            <h4>🚇 Ligne ${routeName}</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps:</strong> ${travelTime}s</p>
+            <p><strong>Type:</strong> Connexion directe</p>
+          `
+        } else if (feature.properties.type === 'transfer') {
+          const transferTime = feature.properties.transfer_time || 'N/A'
+          popupContent += `
+            <h4>🔄 Correspondance</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Temps:</strong> ${transferTime}s</p>
+            <p><strong>Type:</strong> Transfert</p>
+          `
+        }
+
+        popupContent += `</div>`
+        layer.bindPopup(popupContent)
+      }
+    })
+    
+    edgesLayer.value.addTo(map.value)
+    
+    // Déplacer les stations au-dessus des arêtes
+    if (stationsLayer.value) {
+      stationsLayer.value.bringToFront()
+    }
+  }
+}
+
+// Ajouter les nouvelles méthodes à l'instance de la carte
+// Cette section a été déplacée vers onMounted() pour s'assurer que map.value existe
 </script>
 
 <style scoped>
@@ -730,6 +1163,61 @@ const toggleEdges = async () => {
 .edge-popup p {
   margin: 2px 0;
   color: #666;
+}
+
+/* Styles pour les éléments mis en évidence */
+:deep(.edge-popup.highlighted) {
+  background-color: rgba(231, 76, 60, 0.1);
+  border: 2px solid #e74c3c;
+  border-radius: 5px;
+  padding: 10px;
+}
+
+:deep(.edge-popup.highlighted h4) {
+  color: #c0392b;
+  font-weight: bold;
+}
+
+:deep(.station-popup.highlighted) {
+  background-color: rgba(231, 76, 60, 0.1);
+  border: 2px solid #e74c3c;
+  border-radius: 5px;
+  padding: 10px;
+}
+
+:deep(.station-popup.highlighted h4) {
+  color: #c0392b;
+  font-weight: bold;
+}
+
+:deep(.station-type-start) {
+  color: #2ecc71;
+  font-weight: bold;
+  display: block;
+  padding: 5px;
+  background-color: rgba(46, 204, 113, 0.1);
+  border-radius: 4px;
+  margin-top: 5px;
+}
+
+:deep(.station-type-end) {
+  color: #e74c3c;
+  font-weight: bold;
+  display: block;
+  padding: 5px;
+  background-color: rgba(231, 76, 60, 0.1);
+  border-radius: 4px;
+  margin-top: 5px;
+}
+
+:deep(.station-type-transfer) {
+  color: #3498db;
+  font-weight: bold;
+  display: block;
+  padding: 5px;
+  background-color: rgba(52, 152, 219, 0.1);
+  border-radius: 4px;
+  margin-top: 5px;
 }
 
 /* Styles pour les contrôles de la carte */
