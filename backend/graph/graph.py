@@ -2,6 +2,7 @@ import pandas as pd
 import networkx as nx
 from datetime import datetime, timedelta
 import os
+from backend.utils import log_info, log_warning, log_error
 
 
 '''
@@ -96,7 +97,7 @@ class GrapheGTFS:
                 stop_id = row["stop_id"]
                 stop_info = stop_lookup.get(stop_id)
                 if stop_info is None:
-                    print(f"⚠️ NPas d'arrêt trouvé avec l'ID : {stop_id}")
+                    log_warning(f"Pas d'arret trouve avec l'ID : {stop_id}")
                     continue
 
                 self.graph.add_node(
