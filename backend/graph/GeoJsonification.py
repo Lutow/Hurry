@@ -1,5 +1,6 @@
 import geojson
 from collections import defaultdict
+from backend.utils.logger import log_info, log_warning, log_error
 
 
 def graph_nodes_to_geojson(graph):
@@ -13,12 +14,12 @@ def graph_nodes_to_geojson(graph):
         dict: Objet GeoJSON contenant les stations
     """
     try:
-        print(f"Conversion en GeoJSON de {len(graph.nodes)} nœuds")
+        log_info(f"Conversion en GeoJSON de {len(graph.nodes)} noeuds")
         grouped = defaultdict(list)
         
         # Vérifier que le graphe n'est pas vide
         if len(graph.nodes) == 0:
-            print("⚠️ Le graphe est vide, retour d'un GeoJSON vide")
+            log_warning("Le graphe est vide, retour d'un GeoJSON vide")
             return geojson.FeatureCollection([])
         
         # Regroupement par nom de station
@@ -28,7 +29,7 @@ def graph_nodes_to_geojson(graph):
                 name = data.get("stop_name", "") or str(node_id)
                 grouped[name].append(data)
             except Exception as e:
-                print(f"❌ Erreur lors du traitement du nœud {node_id}")
+                log_error(f"Erreur lors du traitement du noeud {node_id}")
                 continue
 
         features = []
@@ -81,14 +82,14 @@ def graph_nodes_to_geojson(graph):
                 features.append(feature)
                 
             except Exception as e:
-                print(f"❌ Erreur lors du traitement de la station '{name}'")
+                log_error(f"Erreur lors du traitement de la station '{name}'")
                 continue
         
-        print(f"Génération de {len(features)} features GeoJSON")
+        log_info(f"Generation de {len(features)} features GeoJSON")
         return geojson.FeatureCollection(features)
         
     except Exception as e:
-        print(f"❌ Erreur lors de la conversion en GeoJSON: {e}")
+        log_error(f"Erreur lors de la conversion en GeoJSON: {e}")
         import traceback
         traceback.print_exc()
         return geojson.FeatureCollection([])
