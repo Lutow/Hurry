@@ -49,7 +49,7 @@
           <div v-for="(route, index) in routes" :key="index" class="route-option" @click="selectRoute(route)">
             <div class="route-summary">
               <div class="route-info">
-                <span class="route-label">Option {{ index + 1 }}</span>
+                <span class="route-label">{{ getOptionLabel(index) }}</span>
                 <div class="route-metrics">
                   <span class="emission">
                     <span class="material-icons">co2</span>
@@ -206,6 +206,27 @@ function toggleRouteDisplay(route, index) {
     emit('showRoute', route)
   }
 }
+
+const fastestIndex = computed(() => {
+  if (props.routes.length <= 1) return -1
+  return props.routes.reduce((minIdx, route, idx, arr) =>
+    route.duration < arr[minIdx].duration ? idx : minIdx, 0)
+})
+
+const greenestIndex = computed(() => {
+  if (props.routes.length <= 1) return -1
+  return props.routes.reduce((minIdx, route, idx, arr) =>
+    route.co2 < arr[minIdx].co2 ? idx : minIdx, 0)
+})
+
+function getOptionLabel(index) {
+  if (props.routes.length === 1) return "Option unique"
+  if (index === fastestIndex.value && index === greenestIndex.value) return "Option optimale"
+  if (index === fastestIndex.value) return "Option la plus rapide"
+  if (index === greenestIndex.value) return "Option la plus écologique"
+  return `Option ${index + 1}`
+}
+
 
 function closeResults() {
   // Masquer le trajet affiché avant de fermer
