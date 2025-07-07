@@ -42,7 +42,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="disruptions-container" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop>
+  <div class="disruptions-container" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop @dblclick.stop.prevent>
     <div v-if="loading" class="loading-container">
       <div class="loading-spinner"></div>
       <div class="loading-text">Chargement des informations trafic...</div>
