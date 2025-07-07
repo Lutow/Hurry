@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar" :style="cssVars" :class="{ 'light-mode': isLight}" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop>
+  <div class="sidebar" :style="cssVars" :class="{ 'light-mode': isLight}" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop @dblclick.stop.prevent>
     <div class="sidebar-header">
       <div class="logo-container">
         <span class="material-icons logo-icon">directions_subway</span>
@@ -592,6 +592,7 @@ onMounted(() => {
   width: 21px;
   height: 20px;
   border-radius: 50%;
+  box-shadow: inset 12px -4px 0px 0px var(--light);
   -webkit-box-shadow: inset 12px -4px 0px 0px var(--light);
   background-color: var(--dark);
   -webkit-transition: 0.3s;
@@ -624,6 +625,7 @@ onMounted(() => {
 
 .sidebar.light-mode .slider::before {
   background-color: #2c3e50;
+  box-shadow: inset 12px -4px 0px 0px #2c3e50;
   -webkit-box-shadow: inset 12px -4px 0px 0px #2c3e50;
 }
 
