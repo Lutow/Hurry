@@ -1,5 +1,5 @@
 <template>
-  <div class="journey-planner" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop>
+  <div class="journey-planner" @wheel.stop @mousedown.stop @mousemove.stop @touchstart.stop @touchmove.stop @dblclick.stop.prevent>
     <form @submit.prevent="handleSearch">
       <div class="journey-header">
         <div class="journey-title">
@@ -55,6 +55,168 @@
     <div v-if="errorMessage" class="error-message">
       <span class="material-icons error-icon">error_outline</span>
       <span>{{ errorMessage }}</span>
+    </div>
+    
+    <!-- Section ACPM -->
+    <div class="acpm-section">
+      <div class="section-title">
+        <span class="material-icons">account_tree</span>
+        <span>Arbre Couvrant de Poids Minimum</span>
+      </div>
+      
+      <div class="acpm-controls">
+        <button 
+          type="button" 
+          class="acpm-button" 
+          @click="calculateMST"
+          :disabled="loadingMST"
+        >
+          <span v-if="loadingMST" class="mini-spinner"></span>
+          <span v-else class="material-icons">account_tree</span>
+          <span>{{ loadingMST ? 'Calcul...' : 'Calculer ACPM' }}</span>
+        </button>
+        
+        <div v-if="mstResult" class="mst-info">
+          <div class="mst-weight">
+            <span class="material-icons">scale</span>
+            <span>Poids total : {{ mstResult.totalWeight }}s</span>
+          </div>
+          <div class="mst-edges">
+            <span class="material-icons">timeline</span>
+            <span>{{ mstResult.edgeCount }} arêtes</span>
+          </div>
+        </div>
+        
+        <!-- Contrôles d'animation -->
+        <div v-if="mstResult" class="animation-controls">
+          <div class="animation-buttons">
+            <button 
+              type="button" 
+              class="animation-button"
+              @click="startMSTAnimation"
+              :disabled="isAnimating"
+            >
+              <span class="material-icons">play_arrow</span>
+              <span>Animation</span>
+            </button>
+            
+            <button 
+              v-if="isAnimating" 
+              type="button" 
+              class="animation-button stop"
+              @click="stopAnimation"
+            >
+              <span class="material-icons">stop</span>
+              <span>Arrêter</span>
+            </button>
+            
+            <button 
+              type="button" 
+              class="animation-button"
+              @click="resetAnimation"
+              :disabled="isAnimating"
+            >
+              <span class="material-icons">refresh</span>
+              <span>Réinitialiser</span>
+            </button>
+          </div>
+          
+          <div class="manual-controls">
+            <button 
+              type="button" 
+              class="step-button"
+              @click="previousStep"
+              :disabled="isAnimating || currentStep <= 0"
+            >
+              <span class="material-icons">skip_previous</span>
+            </button>
+            
+            <div class="step-info">
+              <span>Étape {{ currentStep }} / {{ mstResult.steps ? mstResult.steps.length : 0 }}</span>
+              <div v-if="mstResult.steps && currentStep > 0 && currentStep <= mstResult.steps.length" class="current-step-info">
+                <span>Poids actuel: {{ mstResult.steps[currentStep - 1]?.totalWeight || 0 }}s</span>
+              </div>
+            </div>
+            
+            <button 
+              type="button" 
+              class="step-button"
+              @click="nextStep"
+              :disabled="isAnimating || currentStep >= (mstResult.steps ? mstResult.steps.length : 0)"
+            >
+              <span class="material-icons">skip_next</span>
+            </button>
+          </div>
+          
+          <div class="speed-control">
+            <label for="animation-speed">Vitesse:</label>
+            <div class="speed-presets">
+              <button 
+                type="button" 
+                class="speed-preset" 
+                :class="{ active: animationSpeed === 20 }"
+                @click="animationSpeed = 20"
+              >
+                Ultra
+              </button>
+              <button 
+                type="button" 
+                class="speed-preset" 
+                :class="{ active: animationSpeed === 100 }"
+                @click="animationSpeed = 100"
+              >
+                Rapide
+              </button>
+              <button 
+                type="button" 
+                class="speed-preset" 
+                :class="{ active: animationSpeed === 500 }"
+                @click="animationSpeed = 500"
+              >
+                Normal
+              </button>
+              <button 
+                type="button" 
+                class="speed-preset" 
+                :class="{ active: animationSpeed === 1000 }"
+                @click="animationSpeed = 1000"
+              >
+                Lent
+              </button>
+            </div>
+            <input 
+              id="animation-speed"
+              type="range" 
+              min="20" 
+              max="2000" 
+              step="20"
+              v-model="animationSpeed"
+              class="speed-slider"
+            />
+            <span class="speed-value">{{ animationSpeed }}ms</span>
+          </div>
+        </div>
+        
+        <button 
+          v-if="mstResult && !mstDisplayed && !isAnimating" 
+          type="button" 
+          class="acpm-display-button"
+          @click="displayMST"
+        >
+          <span class="material-icons">visibility</span>
+          <span>Afficher Complet</span>
+        </button>
+        
+        <button 
+          v-if="mstDisplayed" 
+          type="button" 
+          class="acpm-hide-button"
+          @click="hideMST"
+        >
+          <span class="material-icons">visibility_off</span>
+          <span>Cacher</span>
+        </button>
+      </div>
     </div>
     <!-- Datalist pour l'autocomplétion des stations -->
     <datalist id="stations">
@@ -113,6 +275,14 @@ const filteredDepartStops = ref([])
 const filteredArriveeStops = ref([])
 const showStationsList = ref(false)
 const activeInput = ref(null)
+
+// Variables pour l'ACPM
+const loadingMST = ref(false)
+const mstResult = ref(null)
+const mstDisplayed = ref(false)
+const isAnimating = ref(false)
+const currentStep = ref(0)
+const animationSpeed = ref(500) // ms par étape
 
 // Injecter l'instance de la carte et la fonction d'affichage d'itinéraire
 const mapInstance = inject('mapInstance', null)
@@ -248,6 +418,8 @@ async function handleSearch() {
 }
 
 function closeResults() {
+  // Masquer le trajet affiché et restaurer l'affichage complet
+  hideRouteOnMap()
   showResults.value = false
 }
 
@@ -402,6 +574,306 @@ function handleInputChange(field) {
       showStationsList.value = true;
     }
   }
+}
+
+// ===== FONCTIONS ACPM =====
+
+// Classe Union-Find pour l'algorithme de Kruskal
+class UnionFind {
+  constructor(vertices) {
+    this.parent = new Map()
+    this.rank = new Map()
+    
+    vertices.forEach(vertex => {
+      this.parent.set(vertex, vertex)
+      this.rank.set(vertex, 0)
+    })
+  }
+  
+  find(vertex) {
+    if (this.parent.get(vertex) !== vertex) {
+      this.parent.set(vertex, this.find(this.parent.get(vertex)))
+    }
+    return this.parent.get(vertex)
+  }
+  
+  union(vertex1, vertex2) {
+    const root1 = this.find(vertex1)
+    const root2 = this.find(vertex2)
+    
+    if (root1 === root2) return false
+    
+    const rank1 = this.rank.get(root1)
+    const rank2 = this.rank.get(root2)
+    
+    if (rank1 < rank2) {
+      this.parent.set(root1, root2)
+    } else if (rank1 > rank2) {
+      this.parent.set(root2, root1)
+    } else {
+      this.parent.set(root2, root1)
+      this.rank.set(root1, rank1 + 1)
+    }
+    
+    return true
+  }
+}
+
+// Algorithme de Kruskal pour calculer l'ACPM
+function kruskalMST(edges, vertices) {
+  console.log(`Calcul ACPM avec ${edges.length} arêtes et ${vertices.size} sommets`)
+  
+  // Trier les arêtes par poids croissant
+  const sortedEdges = edges.sort((a, b) => a.weight - b.weight)
+  
+  const unionFind = new UnionFind(vertices)
+  const mstEdges = []
+  const steps = []
+  let totalWeight = 0
+  
+  for (const edge of sortedEdges) {
+    if (unionFind.union(edge.from, edge.to)) {
+      mstEdges.push(edge)
+      totalWeight += edge.weight
+      
+      // Enregistrer cette étape
+      steps.push({
+        edge: edge,
+        edgesCount: mstEdges.length,
+        totalWeight: Math.round(totalWeight),
+        mstEdges: [...mstEdges]
+      })
+      
+      // Si on a assez d'arêtes pour couvrir tous les sommets
+      if (mstEdges.length === vertices.size - 1) {
+        break
+      }
+    }
+  }
+  
+  console.log(`ACPM calculé: ${mstEdges.length} arêtes, poids total: ${totalWeight}`)
+  return {
+    edges: mstEdges,
+    totalWeight: Math.round(totalWeight),
+    edgeCount: mstEdges.length,
+    steps: steps
+  }
+}
+
+// Fonction pour calculer l'ACPM
+async function calculateMST() {
+  if (loadingMST.value) return
+  
+  loadingMST.value = true
+  mstResult.value = null
+  
+  try {
+    console.log('Récupération des données du graphe pour ACPM...')
+    
+    // Récupérer les arêtes depuis l'API
+    const response = await fetch('http://localhost:8000/api/unique/edges')
+    if (!response.ok) {
+      throw new Error(`Erreur HTTP: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    const edges = []
+    const vertices = new Set()
+    
+    // Convertir les données GeoJSON en format pour l'algorithme
+    data.features.forEach(feature => {
+      const props = feature.properties
+      
+      // Utiliser seulement les connexions directes (pas les transferts pour l'ACPM)
+      if (props.type === 'direct' && props.from_name && props.to_name) {
+        const weight = props.travel_time || 120 // Poids par défaut si non spécifié
+        
+        edges.push({
+          from: props.from_name,
+          to: props.to_name,
+          weight: weight,
+          originalEdge: feature
+        })
+        
+        vertices.add(props.from_name)
+        vertices.add(props.to_name)
+      }
+    })
+    
+    console.log(`Données préparées: ${edges.length} arêtes, ${vertices.size} sommets`)
+    
+    if (edges.length === 0) {
+      throw new Error('Aucune arête trouvée pour calculer l\'ACPM')
+    }
+    
+    // Calculer l'ACPM avec Kruskal
+    mstResult.value = kruskalMST(edges, vertices)
+    
+    console.log('ACPM calculé avec succès:', mstResult.value)
+    
+  } catch (error) {
+    console.error('Erreur lors du calcul de l\'ACPM:', error)
+    errorMessage.value = `Erreur ACPM: ${error.message}`
+    
+    // Effacer le message d'erreur après 5 secondes
+    setTimeout(() => {
+      errorMessage.value = ''
+    }, 5000)
+  } finally {
+    loadingMST.value = false
+  }
+}
+
+// Fonction pour afficher l'ACPM sur la carte
+function displayMST() {
+  if (!mstResult.value || !mapInstance.value) {
+    console.error('Pas de résultat ACPM ou instance de carte non disponible')
+    return
+  }
+  
+  console.log('Affichage de l\'ACPM sur la carte')
+  
+  if (mapInstance.value.showMST) {
+    mapInstance.value.showMST(mstResult.value)
+    mstDisplayed.value = true
+  } else {
+    console.error('Fonction showMST non disponible sur l\'instance de carte')
+  }
+}
+
+// Fonction pour cacher l'ACPM
+function hideMST() {
+  if (!mapInstance.value) {
+    console.error('Instance de carte non disponible')
+    return
+  }
+  
+  console.log('Masquage de l\'ACPM')
+  
+  if (mapInstance.value.hideMST) {
+    mapInstance.value.hideMST()
+    mstDisplayed.value = false
+  } else if (mapInstance.value.showAllElements) {
+    mapInstance.value.showAllElements()
+    mstDisplayed.value = false
+  } else {
+    console.error('Fonction hideMST non disponible sur l\'instance de carte')
+  }
+}
+
+// ===== FONCTIONS ANIMATION ACPM =====
+
+// Fonction pour démarrer l'animation progressive
+function startMSTAnimation() {
+  if (!mstResult.value || !mstResult.value.steps || mstResult.value.steps.length === 0) {
+    console.error('Pas de données d\'étapes pour l\'animation')
+    return
+  }
+  
+  isAnimating.value = true
+  currentStep.value = 0
+  
+  // Masquer l'ACPM complet s'il est affiché
+  if (mstDisplayed.value) {
+    hideMST()
+  }
+  
+  // Centrer la vue sur l'ensemble de l'ACPM au début de l'animation
+  if (mapInstance.value && mapInstance.value.centerOnMST) {
+    mapInstance.value.centerOnMST(mstResult.value)
+  }
+  
+  // Démarrer l'animation
+  animateNextStep()
+}
+
+// Fonction pour animer l'étape suivante
+function animateNextStep() {
+  if (!isAnimating.value || !mstResult.value || !mstResult.value.steps) {
+    return
+  }
+  
+  const steps = mstResult.value.steps
+  
+  if (currentStep.value < steps.length) {
+    const step = steps[currentStep.value]
+    
+    // Afficher l'étape actuelle sur la carte
+    if (mapInstance.value && mapInstance.value.showMSTStep) {
+      mapInstance.value.showMSTStep(step)
+    }
+    
+    currentStep.value++
+    
+    // Programmer la prochaine étape
+    if (currentStep.value < steps.length) {
+      setTimeout(() => {
+        animateNextStep()
+      }, animationSpeed.value)
+    } else {
+      // Animation terminée
+      setTimeout(() => {
+        isAnimating.value = false
+        mstDisplayed.value = true
+      }, animationSpeed.value)
+    }
+  }
+}
+
+// Fonction pour passer à l'étape suivante manuellement
+function nextStep() {
+  if (!mstResult.value || !mstResult.value.steps || currentStep.value >= mstResult.value.steps.length) {
+    return
+  }
+  
+  const step = mstResult.value.steps[currentStep.value]
+  
+  // Afficher l'étape actuelle sur la carte
+  if (mapInstance.value && mapInstance.value.showMSTStep) {
+    mapInstance.value.showMSTStep(step)
+  }
+  
+  currentStep.value++
+  
+  // Si c'était la dernière étape
+  if (currentStep.value >= mstResult.value.steps.length) {
+    mstDisplayed.value = true
+  }
+}
+
+// Fonction pour revenir à l'étape précédente
+function previousStep() {
+  if (!mstResult.value || !mstResult.value.steps || currentStep.value <= 0) {
+    return
+  }
+  
+  currentStep.value--
+  
+  const step = mstResult.value.steps[currentStep.value]
+  
+  // Afficher l'étape actuelle sur la carte
+  if (mapInstance.value && mapInstance.value.showMSTStep) {
+    mapInstance.value.showMSTStep(step)
+  }
+  
+  mstDisplayed.value = false
+}
+
+// Fonction pour arrêter l'animation
+function stopAnimation() {
+  isAnimating.value = false
+}
+
+// Fonction pour réinitialiser l'animation
+function resetAnimation() {
+  isAnimating.value = false
+  currentStep.value = 0
+  
+  if (mapInstance.value && mapInstance.value.hideMST) {
+    mapInstance.value.hideMST()
+  }
+  
+  mstDisplayed.value = false
 }
 </script>
 
@@ -606,5 +1078,362 @@ function handleInputChange(field) {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Styles pour la section ACPM */
+.acpm-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid var(--sidebar-accent-hover);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.section-title .material-icons {
+  margin-right: 10px;
+  font-size: 20px;
+  color: var(--sidebar-accent);
+}
+
+.acpm-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.acpm-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(90deg, #9b59b6, #8e44ad);
+  color: var(--sidebar-button-text);
+  border: none;
+  border-radius: 20px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 140px;
+}
+
+.acpm-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.acpm-button:not(:disabled):hover {
+  background: linear-gradient(90deg, #8e44ad, #7d3c98);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--sidebar-shadow);
+}
+
+.acpm-button .material-icons {
+  font-size: 18px;
+  margin-right: 6px;
+}
+
+.acpm-display-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(90deg, #27ae60, #2ecc71);
+  color: white;
+  border: none;
+  border-radius: 15px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.acpm-display-button:hover {
+  background: linear-gradient(90deg, #229954, #27ae60);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(39, 174, 96, 0.3);
+}
+
+.acpm-display-button .material-icons {
+  font-size: 16px;
+  margin-right: 4px;
+}
+
+.acpm-hide-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(90deg, #e74c3c, #c0392b);
+  color: white;
+  border: none;
+  border-radius: 15px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.acpm-hide-button:hover {
+  background: linear-gradient(90deg, #c0392b, #a93226);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(231, 76, 60, 0.3);
+}
+
+.acpm-hide-button .material-icons {
+  font-size: 16px;
+  margin-right: 4px;
+}
+
+.mst-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--sidebar-bg-secondary);
+  border-radius: 8px;
+  border-left: 4px solid #9b59b6;
+}
+
+.mst-weight, .mst-edges {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--sidebar-text);
+}
+
+.mst-weight .material-icons, .mst-edges .material-icons {
+  margin-right: 8px;
+  font-size: 16px;
+  color: var(--sidebar-accent);
+}
+
+.mst-weight {
+  font-weight: 600;
+  color: var(--sidebar-accent);
+}
+
+/* Styles pour les contrôles d'animation ACPM */
+.animation-controls {
+  margin-top: 15px;
+  padding: 15px;
+  background: var(--sidebar-bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--sidebar-accent-hover);
+}
+
+.animation-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.animation-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--sidebar-accent);
+  color: var(--sidebar-button-text);
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+  min-width: 80px;
+  justify-content: center;
+}
+
+.animation-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.animation-button:not(:disabled):hover {
+  background: var(--sidebar-accent-hover);
+  transform: translateY(-1px);
+}
+
+.animation-button.stop {
+  background: var(--sidebar-danger);
+}
+
+.animation-button.stop:not(:disabled):hover {
+  background: #dc2626;
+}
+
+.manual-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: var(--sidebar-bg);
+  border-radius: 6px;
+}
+
+.step-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--sidebar-accent);
+  color: var(--sidebar-button-text);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.step-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.step-button:not(:disabled):hover {
+  background: var(--sidebar-accent-hover);
+  transform: scale(1.1);
+}
+
+.step-info {
+  text-align: center;
+  flex: 1;
+  margin: 0 12px;
+}
+
+.step-info span {
+  display: block;
+  font-size: 12px;
+  color: var(--sidebar-text);
+  font-weight: 500;
+}
+
+.current-step-info {
+  margin-top: 4px;
+}
+
+.current-step-info span {
+  font-size: 11px;
+  color: var(--sidebar-text-secondary);
+  font-style: italic;
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--sidebar-text);
+}
+
+.speed-control label {
+  font-weight: 500;
+  min-width: 50px;
+}
+
+.speed-slider {
+  flex: 1;
+  height: 4px;
+  background: var(--sidebar-bg);
+  border-radius: 2px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.speed-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--sidebar-accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.speed-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--sidebar-accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.speed-presets {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.speed-preset {
+  padding: 4px 8px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  border: 1px solid var(--sidebar-accent-hover);
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.speed-preset:hover {
+  background: var(--sidebar-accent-hover);
+  color: var(--sidebar-button-text);
+}
+
+.speed-preset.active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-button-text);
+  border-color: var(--sidebar-accent);
+}
+
+.speed-value {
+  font-size: 11px;
+  color: var(--sidebar-text-secondary);
+  min-width: 45px;
+}
+
+/* Styles pour le dropdown personnalisé des stations */
+.station-dropdown {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: rgba(20, 20, 20, 0.98);
+  border: 1px solid rgba(52, 152, 219, 0.7);
+  border-radius: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+}
+
+.station-option {
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.station-option:hover {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.station-option:last-child {
+  border-bottom: none;
 }
 </style>
