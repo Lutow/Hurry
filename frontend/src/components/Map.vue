@@ -73,6 +73,9 @@ const originalStationsData = ref(null)  // Sauvegarder les données originales d
 const originalEdgesData = ref(null)  // Sauvegarder les données originales des arêtes
 const routeDisplayed = ref(false)  // Indique si un trajet est actuellement affiché
 const currentRoute = ref(null)  // Stocke le trajet actuellement affiché
+const mstDisplayed = ref(false)  // Indique si l'ACPM est actuellement affiché
+const mstLayer = ref(null)  // Couche pour afficher l'ACPM
+const currentMST = ref(null)  // Stocke l'ACPM actuellement affiché
 
 // Fournir l'instance de carte aux composants enfants
 provide('mapInstance', map)
@@ -547,6 +550,10 @@ onMounted(async () => {
   if (map.value) {
     map.value.showOnlyRoute = showOnlyRoute
     map.value.showAllElements = showAllElements
+    map.value.showMST = showMST
+    map.value.showMSTStep = showMSTStep
+    map.value.centerOnMST = centerOnMST
+    map.value.hideMST = hideMST
   }
 })
 
@@ -660,6 +667,17 @@ const showOnlyRoute = (route) => {
   currentRoute.value = route
   routeDisplayed.value = true
   
+  // DÉSACTIVER LE LAZY LOADING pendant l'affichage du trajet
+  if (moveEndListener.value) {
+    map.value.off('moveend', moveEndListener.value)
+  }
+  if (zoomStartListener.value) {
+    map.value.off('zoomstart', zoomStartListener.value)
+  }
+  if (moveStartListener.value) {
+    map.value.off('movestart', moveStartListener.value)
+  }
+  
   if (!originalStationsData.value || !originalEdgesData.value) {
     console.error('Données originales non disponibles')
     return
@@ -680,7 +698,7 @@ const showOnlyRoute = (route) => {
   // Stocker les segments pour l'affichage organisé
   const routeSegments = []
   
-  // Extraire toutes les stations du trajet
+  // Extraire toutes les stations du trajet (départ et arrivée de chaque segment)
   if (route.segments) {
     route.segments.forEach(segment => {
       routeStationNames.add(segment.from)
@@ -695,14 +713,116 @@ const showOnlyRoute = (route) => {
     })
   }
   
-  console.log('Stations du trajet:', Array.from(routeStationNames))
+  // Filtrer les arêtes pour ne garder que celles du trajet
+  const routeEdgesFeatures = []
+  
+  if (route.segments) {
+    route.segments.forEach(segment => {
+      console.log(`Traitement du segment: ${segment.from} -> ${segment.to} (ligne: ${segment.line})`)
+      
+      // Pour les segments de correspondance (transferts)
+      if (segment.type === 'transfer' || segment.line === 'Correspondance') {
+        const transferEdges = originalEdgesData.value.features.filter(feature => {
+          return feature.properties.type === 'transfer' &&
+                 ((feature.properties.from_name === segment.from && feature.properties.to_name === segment.to) ||
+                  (feature.properties.from_name === segment.to && feature.properties.to_name === segment.from))
+        })
+        console.log(`Trouvé ${transferEdges.length} transferts pour ${segment.from} -> ${segment.to}`)
+        routeEdgesFeatures.push(...transferEdges)
+      } else {
+        // Pour les segments de métro (connexions directes)
+        // Chercher toutes les arêtes directes de cette ligne entre ces deux stations
+        const directEdges = originalEdgesData.value.features.filter(feature => {
+          const fromName = feature.properties.from_name
+          const toName = feature.properties.to_name
+          const routeShortName = feature.properties.route_short_name
+          
+          // Correspondance exacte par nom et ligne
+          const exactMatch = (fromName === segment.from && toName === segment.to && routeShortName === segment.line) ||
+                            (fromName === segment.to && toName === segment.from && routeShortName === segment.line)
+          
+          // Si pas de correspondance exacte, essayer juste par nom (moins strict)
+          const nameMatch = (fromName === segment.from && toName === segment.to) ||
+                           (fromName === segment.to && toName === segment.from)
+          
+          return exactMatch || nameMatch
+        })
+        
+        console.log(`Trouvé ${directEdges.length} connexions directes pour ${segment.from} -> ${segment.to} (ligne ${segment.line})`)
+        routeEdgesFeatures.push(...directEdges)
+        
+        // Si on n'a pas trouvé d'arêtes directes exactes, chercher le chemin sur la ligne
+        if (directEdges.length === 0 && segment.line && segment.line !== 'Correspondance') {
+          console.log(`Recherche du chemin sur la ligne ${segment.line} entre ${segment.from} et ${segment.to}`)
+          
+          // Chercher toutes les arêtes de cette ligne
+          const lineEdges = originalEdgesData.value.features.filter(feature => {
+            return feature.properties.route_short_name === segment.line &&
+                   feature.properties.type === 'direct'
+          })
+          
+          // Construire un graphe simple pour cette ligne pour trouver le chemin
+          const lineGraph = new Map()
+          lineEdges.forEach(edge => {
+            const from = edge.properties.from_name
+            const to = edge.properties.to_name
+            
+            if (!lineGraph.has(from)) lineGraph.set(from, [])
+            if (!lineGraph.has(to)) lineGraph.set(to, [])
+            
+            lineGraph.get(from).push({ station: to, edge })
+            lineGraph.get(to).push({ station: from, edge })
+          })
+          
+          // Fonction pour trouver le chemin le plus court entre deux stations
+          const findPath = (start, end, graph) => {
+            if (start === end) return []
+            
+            const visited = new Set()
+            const queue = [{ station: start, path: [] }]
+            
+            while (queue.length > 0) {
+              const { station, path } = queue.shift()
+              
+              if (visited.has(station)) continue
+              visited.add(station)
+              
+              if (station === end) {
+                return path
+              }
+              
+              const neighbors = graph.get(station) || []
+              for (const neighbor of neighbors) {
+                if (!visited.has(neighbor.station)) {
+                  queue.push({
+                    station: neighbor.station,
+                    path: [...path, neighbor.edge]
+                  })
+                }
+              }
+            }
+            return []
+          }
+          
+          // Trouver le chemin entre les deux stations
+          const pathEdges = findPath(segment.from, segment.to, lineGraph)
+          console.log(`Trouvé ${pathEdges.length} arêtes pour le chemin ${segment.from} -> ${segment.to}`)
+          routeEdgesFeatures.push(...pathEdges)
+        }
+      }
+    })
+  }
+  
+  // MAINTENANT ajouter les stations intermédiaires basées sur les arêtes trouvées
+  routeEdgesFeatures.forEach(edge => {
+    routeStationNames.add(edge.properties.from_name)
+    routeStationNames.add(edge.properties.to_name)
+  })
   
   // Filtrer les stations pour ne garder que celles du trajet
   const routeStationsFeatures = originalStationsData.value.features.filter(feature =>
     routeStationNames.has(feature.properties.name)
   )
-  
-  console.log(`Stations filtrées: ${routeStationsFeatures.length} sur ${originalStationsData.value.features.length}`)
   
   // Créer une nouvelle couche pour les stations du trajet
   if (routeStationsFeatures.length > 0) {
@@ -711,41 +831,41 @@ const showOnlyRoute = (route) => {
       features: routeStationsFeatures
     }, {
       pointToLayer: (feature, latlng) => {
-        // Détermine le rôle de la station dans le trajet pour personnaliser l'affichage
+        // Style simplifié des stations pour l'affichage du trajet
         const stationName = feature.properties.name
         
         // Vérifier si la station est un départ ou une arrivée de trajet
         const isStartOfRoute = route.segments[0].from === stationName
         const isEndOfRoute = route.segments[route.segments.length - 1].to === stationName
         
-        // Mise en forme selon le rôle de la station
+        // Style simplifié mais distinctif
         if (isStartOfRoute) {
           return L.circleMarker(latlng, {
-            radius: 10,
-            fillColor: '#2ecc71', // Vert pour le départ
-            color: '#27ae60',
+            radius: 12,
+            fillColor: '#27ae60',  // Vert foncé pour le départ
+            color: '#ffffff',      // Contour blanc
             weight: 3,
             opacity: 1,
-            fillOpacity: 0.9
+            fillOpacity: 1
           })
         } else if (isEndOfRoute) {
           return L.circleMarker(latlng, {
-            radius: 10,
-            fillColor: '#e74c3c', // Rouge pour l'arrivée
-            color: '#c0392b',
+            radius: 12,
+            fillColor: '#e74c3c',  // Rouge pour l'arrivée
+            color: '#ffffff',      // Contour blanc
             weight: 3,
             opacity: 1,
-            fillOpacity: 0.9
+            fillOpacity: 1
           })
         } else {
           // Station intermédiaire
           return L.circleMarker(latlng, {
-            radius: 8,
-            fillColor: '#3498db', // Bleu pour intermédiaire
-            color: '#2980b9',
-            weight: 3,
+            radius: 9,
+            fillColor: '#3498db',  // Bleu pour intermédiaire
+            color: '#ffffff',      // Contour blanc
+            weight: 2,
             opacity: 1,
-            fillOpacity: 0.9
+            fillOpacity: 1
           })
         }
       },
@@ -758,15 +878,15 @@ const showOnlyRoute = (route) => {
         
         let stationType = ''
         if (isStartOfRoute) {
-          stationType = '<span class="station-type-start">Station de départ</span>'
+          stationType = '<span class="station-type-start">🟢 Départ</span>'
         } else if (isEndOfRoute) {
-          stationType = '<span class="station-type-end">Station d\'arrivée</span>'
+          stationType = '<span class="station-type-end">🔴 Arrivée</span>'
         } else {
-          stationType = '<span class="station-type-transfer">Correspondance</span>'
+          stationType = '<span class="station-type-transfer">🔵 Étape</span>'
         }
         
         layer.bindPopup(`
-          <div class="station-popup highlighted">
+          <div class="station-popup route-highlighted">
             <h4>📍 ${stationName}</h4>
             <p><strong>${stationType}</strong></p>
           </div>
@@ -777,83 +897,64 @@ const showOnlyRoute = (route) => {
     stationsLayer.value.addTo(map.value)
   }
   
-  // Filtrer les arêtes pour ne garder que celles du trajet
-  const routeEdgesFeatures = []
-  
-  if (route.segments) {
-    route.segments.forEach(segment => {
-      // Trouver les arêtes correspondant à ce segment
-      const matchingEdges = originalEdgesData.value.features.filter(feature => {
-        const fromName = feature.properties.from_name
-        const toName = feature.properties.to_name
-        
-        return (
-          (fromName === segment.from && toName === segment.to) ||
-          (fromName === segment.to && toName === segment.from) // Bidirectionnel
-        )
-      })
-      
-      routeEdgesFeatures.push(...matchingEdges)
-    })
-  }
-  
-  console.log(`Arêtes filtrées: ${routeEdgesFeatures.length} arêtes trouvées`)
+  // Déduplication des arêtes (éviter les doublons)
+  const uniqueEdges = routeEdgesFeatures.filter((edge, index, array) => {
+    return array.findIndex(e => 
+      e.properties.from_name === edge.properties.from_name &&
+      e.properties.to_name === edge.properties.to_name &&
+      e.properties.type === edge.properties.type
+    ) === index
+  })
   
   // Créer une nouvelle couche pour les arêtes du trajet
-  if (routeEdgesFeatures.length > 0) {
+  if (uniqueEdges.length > 0) {
     edgesLayer.value = L.geoJSON({
       type: 'FeatureCollection',
-      features: routeEdgesFeatures
+      features: uniqueEdges
     }, {
       style: (feature) => {
         const edgeType = feature.properties.type
-        // Utiliser la couleur de la ligne pour une meilleure correspondance visuelle
-        const color = feature.properties.color || '#e74c3c'
         
-        // Rechercher le segment correspondant pour adapter le style
-        const fromName = feature.properties.from_name
-        const toName = feature.properties.to_name
-        const isFirstSegment = route.segments[0].from === fromName && route.segments[0].to === toName
-        const isLastSegment = route.segments[route.segments.length-1].from === fromName && route.segments[route.segments.length-1].to === toName
-
+        // Style simplifié pour une meilleure visibilité du trajet
         if (edgeType === 'direct') {
-          // Style pour les connexions directes (sections de ligne de métro)
+          // Connexions directes - style épais et coloré
           return {
-            color: color,
-            weight: 6, // Plus épais pour une meilleure visibilité
+            color: '#2c3e50',  // Couleur foncée uniforme
+            weight: 8,         // Plus épais pour bien voir le trajet
             opacity: 1,
             smoothFactor: 1,
-            // Effet d'animation pour les premiers/derniers segments
-            dashArray: (isFirstSegment || isLastSegment) ? null : null,
-            lineCap: 'round'
+            lineCap: 'round',
+            lineJoin: 'round'
           }
         } else if (edgeType === 'transfer') {
-          // Style pour les correspondances
+          // Correspondances - style différent mais visible
           return {
-            color: '#FF6B35',
-            weight: 4,
+            color: '#e74c3c',  // Rouge pour les correspondances
+            weight: 6,
             opacity: 1,
-            dashArray: '10, 5', // Tirets plus visibles
+            dashArray: '15, 10', // Tirets plus larges
             smoothFactor: 1,
-            lineCap: 'round'
+            lineCap: 'round',
+            lineJoin: 'round'
           }
         } else {
           // Style par défaut
           return {
-            color: '#e74c3c',
-            weight: 5,
+            color: '#34495e',
+            weight: 6,
             opacity: 1
           }
         }
       },
       onEachFeature: (feature, layer) => {
-        let popupContent = `<div class="edge-popup highlighted">`
+        // Popup simplifié pour l'affichage du trajet
+        let popupContent = `<div class="edge-popup route-highlighted">`
 
         if (feature.properties.type === 'direct') {
           const routeName = feature.properties.route_short_name || 'N/A'
           const travelTime = feature.properties.travel_time || 'N/A'
           popupContent += `
-            <h4>🚇 Ligne ${routeName} - TRAJET SÉLECTIONNÉ</h4>
+            <h4>🚇 Ligne ${routeName} - TRAJET</h4>
             <p><strong>De:</strong> ${feature.properties.from_name}</p>
             <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
             <p><strong>Temps:</strong> ${travelTime}s</p>
@@ -861,7 +962,7 @@ const showOnlyRoute = (route) => {
         } else if (feature.properties.type === 'transfer') {
           const transferTime = feature.properties.transfer_time || 'N/A'
           popupContent += `
-            <h4>🔄 Correspondance - TRAJET SÉLECTIONNÉ</h4>
+            <h4>🔄 Correspondance - TRAJET</h4>
             <p><strong>De:</strong> ${feature.properties.from_name}</p>
             <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
             <p><strong>Temps:</strong> ${transferTime}s</p>
@@ -880,6 +981,29 @@ const showOnlyRoute = (route) => {
       stationsLayer.value.bringToFront()
     }
   }
+  
+  // Centrer la carte sur le trajet affiché pour une meilleure visibilité
+  if (routeStationsFeatures.length > 0) {
+    // Créer un groupe avec toutes les features pour calculer les limites
+    const allFeatures = [...routeStationsFeatures, ...uniqueEdges]
+    if (allFeatures.length > 0) {
+      const group = L.featureGroup()
+      
+      // Ajouter temporairement les features au groupe pour calculer les limites
+      L.geoJSON({
+        type: 'FeatureCollection', 
+        features: allFeatures
+      }).addTo(group)
+      
+      // Ajuster la vue de la carte pour montrer tout le trajet
+      map.value.fitBounds(group.getBounds(), {
+        padding: [20, 20]  // Ajouter un peu de marge autour du trajet
+      })
+      
+      // Retirer le groupe temporaire
+      group.clearLayers()
+    }
+  }
 }
 
 // Fonction pour réafficher tous les éléments
@@ -890,6 +1014,21 @@ const showAllElements = () => {
   routeDisplayed.value = false
   currentRoute.value = null
   
+  // Réinitialiser l'état de l'ACPM affiché
+  mstDisplayed.value = false
+  currentMST.value = null
+  
+  // RÉACTIVER LE LAZY LOADING après avoir masqué le trajet
+  if (moveEndListener.value) {
+    map.value.on('moveend', moveEndListener.value)
+  }
+  if (zoomStartListener.value) {
+    map.value.on('zoomstart', zoomStartListener.value)
+  }
+  if (moveStartListener.value) {
+    map.value.on('movestart', moveStartListener.value)
+  }
+  
   // Supprimer les couches actuelles
   if (stationsLayer.value) {
     map.value.removeLayer(stationsLayer.value)
@@ -898,6 +1037,10 @@ const showAllElements = () => {
   if (edgesLayer.value) {
     map.value.removeLayer(edgesLayer.value)
     edgesLayer.value = null
+  }
+  if (mstLayer.value) {
+    map.value.removeLayer(mstLayer.value)
+    mstLayer.value = null
   }
   
   // Restaurer les couches originales si disponibles
@@ -1009,8 +1152,373 @@ const showAllElements = () => {
   }
 }
 
-// Ajouter les nouvelles méthodes à l'instance de la carte
-// Cette section a été déplacée vers onMounted() pour s'assurer que map.value existe
+// ===== FONCTIONS ACPM =====
+
+// Fonction pour afficher l'ACPM sur la carte
+const showMST = (mstResult) => {
+  console.log('Affichage de l\'ACPM sur la carte:', mstResult)
+  
+  // Stocker l'ACPM courant et marquer qu'il est affiché
+  currentMST.value = mstResult
+  mstDisplayed.value = true
+  
+  // DÉSACTIVER LE LAZY LOADING pendant l'affichage de l'ACPM
+  if (moveEndListener.value) {
+    map.value.off('moveend', moveEndListener.value)
+  }
+  if (zoomStartListener.value) {
+    map.value.off('zoomstart', zoomStartListener.value)
+  }
+  if (moveStartListener.value) {
+    map.value.off('movestart', moveStartListener.value)
+  }
+  
+  if (!originalStationsData.value || !originalEdgesData.value) {
+    console.error('Données originales non disponibles pour l\'ACPM')
+    return
+  }
+  
+  // Masquer toutes les couches existantes
+  if (stationsLayer.value) {
+    map.value.removeLayer(stationsLayer.value)
+    stationsLayer.value = null
+  }
+  if (edgesLayer.value) {
+    map.value.removeLayer(edgesLayer.value)
+    edgesLayer.value = null
+  }
+  
+  // Créer un ensemble des noms de stations de l'ACPM
+  const mstStationNames = new Set()
+  
+  // Extraire toutes les stations de l'ACPM
+  mstResult.edges.forEach(edge => {
+    mstStationNames.add(edge.from)
+    mstStationNames.add(edge.to)
+  })
+  
+  // Filtrer les stations pour ne garder que celles de l'ACPM
+  const mstStationsFeatures = originalStationsData.value.features.filter(feature =>
+    mstStationNames.has(feature.properties.name)
+  )
+  
+  // Créer une nouvelle couche pour les stations de l'ACPM
+  if (mstStationsFeatures.length > 0) {
+    stationsLayer.value = L.geoJSON({
+      type: 'FeatureCollection',
+      features: mstStationsFeatures
+    }, {
+      pointToLayer: (feature, latlng) => {
+        // Style spécial pour les stations de l'ACPM
+        return L.circleMarker(latlng, {
+          radius: 8,
+          fillColor: '#9b59b6',  // Violet pour l'ACPM
+          color: '#ffffff',      // Contour blanc
+          weight: 3,
+          opacity: 1,
+          fillOpacity: 0.9
+        })
+      },
+      onEachFeature: (feature, layer) => {
+        const stationName = feature.properties.name
+        
+        layer.bindPopup(`
+          <div class="station-popup mst-highlighted">
+            <h4>🌐 ${stationName}</h4>
+            <p><strong><span class="station-type-mst">Station ACPM</span></strong></p>
+          </div>
+        `)
+      }
+    })
+    
+    stationsLayer.value.addTo(map.value)
+  }
+  
+  // Créer les arêtes de l'ACPM
+  const mstGeoJsonFeatures = []
+  
+  mstResult.edges.forEach((edge, index) => {
+    // Trouver l'arête correspondante dans les données originales
+    const originalEdge = originalEdgesData.value.features.find(feature => {
+      return (feature.properties.from_name === edge.from && 
+              feature.properties.to_name === edge.to) ||
+             (feature.properties.from_name === edge.to && 
+              feature.properties.to_name === edge.from)
+    })
+    
+    if (originalEdge) {
+      // Créer une nouvelle feature avec les propriétés de l'ACPM
+      const mstFeature = {
+        ...originalEdge,
+        properties: {
+          ...originalEdge.properties,
+          mst_order: index + 1,
+          mst_weight: edge.weight,
+          type: 'mst'
+        }
+      }
+      mstGeoJsonFeatures.push(mstFeature)
+    }
+  })
+  
+  // Créer une nouvelle couche pour les arêtes de l'ACPM
+  if (mstGeoJsonFeatures.length > 0) {
+    mstLayer.value = L.geoJSON({
+      type: 'FeatureCollection',
+      features: mstGeoJsonFeatures
+    }, {
+      style: (feature) => {
+        // Style spécial pour les arêtes de l'ACPM
+        return {
+          color: '#9b59b6',      // Violet pour l'ACPM
+          weight: 6,             // Plus épais
+          opacity: 1,
+          smoothFactor: 1,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }
+      },
+      onEachFeature: (feature, layer) => {
+        const order = feature.properties.mst_order
+        const weight = feature.properties.mst_weight
+        
+        layer.bindPopup(`
+          <div class="edge-popup mst-highlighted">
+            <h4>🌐 Arête ACPM #${order}</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Poids:</strong> ${weight}s</p>
+            <p><strong>Ordre:</strong> ${order}/${mstResult.edgeCount}</p>
+          </div>
+        `)
+      }
+    })
+    
+    mstLayer.value.addTo(map.value)
+    
+    // Déplacer les stations au-dessus des arêtes
+    if (stationsLayer.value) {
+      stationsLayer.value.bringToFront()
+    }
+  }
+  
+  // Centrer la carte sur l'ACPM
+  if (mstStationsFeatures.length > 0) {
+    const allFeatures = [...mstStationsFeatures, ...mstGeoJsonFeatures]
+    if (allFeatures.length > 0) {
+      const group = L.featureGroup()
+      
+      L.geoJSON({
+        type: 'FeatureCollection', 
+        features: allFeatures
+      }).addTo(group)
+      
+      map.value.fitBounds(group.getBounds(), {
+        padding: [20, 20]
+      })
+      
+      group.clearLayers()
+    }
+  }
+}
+
+// Fonction pour afficher une étape de l'ACPM
+const showMSTStep = (step) => {
+  console.log('Affichage de l\'étape ACPM:', step)
+  
+  // DÉSACTIVER LE LAZY LOADING pendant l'affichage de l'ACPM
+  if (moveEndListener.value) {
+    map.value.off('moveend', moveEndListener.value)
+  }
+  if (zoomStartListener.value) {
+    map.value.off('zoomstart', zoomStartListener.value)
+  }
+  if (moveStartListener.value) {
+    map.value.off('movestart', moveStartListener.value)
+  }
+  
+  if (!originalStationsData.value || !originalEdgesData.value) {
+    console.error('Données originales non disponibles pour l\'étape ACPM')
+    return
+  }
+  
+  // Masquer les couches existantes
+  if (stationsLayer.value) {
+    map.value.removeLayer(stationsLayer.value)
+    stationsLayer.value = null
+  }
+  if (edgesLayer.value) {
+    map.value.removeLayer(edgesLayer.value)
+    edgesLayer.value = null
+  }
+  if (mstLayer.value) {
+    map.value.removeLayer(mstLayer.value)
+    mstLayer.value = null
+  }
+  
+  // Créer un ensemble des noms de stations pour cette étape
+  const stepStationNames = new Set()
+  
+  // Extraire toutes les stations jusqu'à cette étape
+  step.mstEdges.forEach(edge => {
+    stepStationNames.add(edge.from)
+    stepStationNames.add(edge.to)
+  })
+  
+  // Filtrer les stations pour ne garder que celles de cette étape
+  const stepStationsFeatures = originalStationsData.value.features.filter(feature =>
+    stepStationNames.has(feature.properties.name)
+  )
+  
+  // Créer une nouvelle couche pour les stations de cette étape
+  if (stepStationsFeatures.length > 0) {
+    stationsLayer.value = L.geoJSON({
+      type: 'FeatureCollection',
+      features: stepStationsFeatures
+    }, {
+      pointToLayer: (feature, latlng) => {
+        // Mettre en évidence la nouvelle arête ajoutée
+        const isNewEdgeStation = (step.edge.from === feature.properties.name || 
+                                 step.edge.to === feature.properties.name)
+        
+        return L.circleMarker(latlng, {
+          radius: isNewEdgeStation ? 10 : 8,
+          fillColor: isNewEdgeStation ? '#e74c3c' : '#9b59b6',  // Rouge pour nouvelle, violet pour existante
+          color: '#ffffff',
+          weight: isNewEdgeStation ? 4 : 3,
+          opacity: 1,
+          fillOpacity: 0.9
+        })
+      },
+      onEachFeature: (feature, layer) => {
+        const stationName = feature.properties.name
+        const isNewEdgeStation = (step.edge.from === stationName || step.edge.to === stationName)
+        
+        layer.bindPopup(`
+          <div class="station-popup mst-highlighted">
+            <h4>🌐 ${stationName}</h4>
+            <p><strong><span class="station-type-mst">
+              ${isNewEdgeStation ? 'Nouvelle station ajoutée' : 'Station ACPM'}
+            </span></strong></p>
+            ${isNewEdgeStation ? '<p><em>Étape ' + step.edgesCount + '</em></p>' : ''}
+          </div>
+        `)
+      }
+    })
+    
+    stationsLayer.value.addTo(map.value)
+  }
+  
+  // Créer les arêtes pour cette étape
+  const stepGeoJsonFeatures = []
+  
+  step.mstEdges.forEach((edge, index) => {
+    // Trouver l'arête correspondante dans les données originales
+    const originalEdge = originalEdgesData.value.features.find(feature => {
+      return (feature.properties.from_name === edge.from && 
+              feature.properties.to_name === edge.to) ||
+             (feature.properties.from_name === edge.to && 
+              feature.properties.to_name === edge.from)
+    })
+    
+    if (originalEdge) {
+      // Marquer la dernière arête ajoutée
+      const isNewEdge = edge === step.edge
+      
+      const stepFeature = {
+        ...originalEdge,
+        properties: {
+          ...originalEdge.properties,
+          mst_order: index + 1,
+          mst_weight: edge.weight,
+          type: 'mst',
+          is_new_edge: isNewEdge
+        }
+      }
+      stepGeoJsonFeatures.push(stepFeature)
+    }
+  })
+  
+  // Créer une nouvelle couche pour les arêtes de cette étape
+  if (stepGeoJsonFeatures.length > 0) {
+    mstLayer.value = L.geoJSON({
+      type: 'FeatureCollection',
+      features: stepGeoJsonFeatures
+    }, {
+      style: (feature) => {
+        const isNewEdge = feature.properties.is_new_edge
+        
+        return {
+          color: isNewEdge ? '#e74c3c' : '#9b59b6',  // Rouge pour nouvelle, violet pour existante
+          weight: isNewEdge ? 8 : 6,
+          opacity: 1,
+          smoothFactor: 1,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }
+      },
+      onEachFeature: (feature, layer) => {
+        const order = feature.properties.mst_order
+        const weight = feature.properties.mst_weight
+        const isNewEdge = feature.properties.is_new_edge
+        
+        layer.bindPopup(`
+          <div class="edge-popup mst-highlighted">
+            <h4>🌐 ${isNewEdge ? 'Nouvelle arête' : 'Arête ACPM'} #${order}</h4>
+            <p><strong>De:</strong> ${feature.properties.from_name}</p>
+            <p><strong>Vers:</strong> ${feature.properties.to_name}</p>
+            <p><strong>Poids:</strong> ${weight}s</p>
+            ${isNewEdge ? `<p><em>Ajoutée à l'étape ${step.edgesCount}</em></p>` : ''}
+            <p class="edge-type-mst">Étape ${step.edgesCount}/${step.mstEdges.length}</p>
+          </div>
+        `)
+      }
+    })
+    
+    mstLayer.value.addTo(map.value)
+  }
+}
+
+// Fonction pour centrer la vue sur l'ensemble de l'ACPM
+const centerOnMST = (mstResult) => {
+  console.log('Centrage de la vue sur l\'ACPM')
+  
+  if (!originalEdgesData.value || !mstResult.edges) {
+    console.error('Données non disponibles pour le centrage')
+    return
+  }
+  
+  // Créer un groupe de toutes les arêtes de l'ACPM pour calculer les bounds
+  const allMSTFeatures = []
+  
+  mstResult.edges.forEach(edge => {
+    const originalEdge = originalEdgesData.value.features.find(feature => {
+      return (feature.properties.from_name === edge.from && 
+              feature.properties.to_name === edge.to) ||
+             (feature.properties.from_name === edge.to && 
+              feature.properties.to_name === edge.from)
+    })
+    
+    if (originalEdge) {
+      allMSTFeatures.push(originalEdge)
+    }
+  })
+  
+  if (allMSTFeatures.length > 0) {
+    const mstGeoJSON = {
+      type: 'FeatureCollection',
+      features: allMSTFeatures
+    }
+    
+    const bounds = L.geoJSON(mstGeoJSON).getBounds()
+    
+    // Centrer avec un padding généreux pour voir l'animation complète
+    map.value.fitBounds(bounds, { 
+      padding: [50, 50],
+      maxZoom: 12  // Limiter le zoom pour garder une vue d'ensemble
+    })
+  }
+}
 </script>
 
 <style scoped>
@@ -1165,6 +1673,37 @@ const showAllElements = () => {
   color: #666;
 }
 
+/* Styles spécifiques pour l'affichage des trajets */
+:deep(.edge-popup.route-highlighted) {
+  background-color: rgba(44, 62, 80, 0.1);
+  border: 3px solid #2c3e50;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+:deep(.edge-popup.route-highlighted h4) {
+  color: #2c3e50;
+  font-weight: bold;
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+:deep(.station-popup.route-highlighted) {
+  background-color: rgba(44, 62, 80, 0.1);
+  border: 3px solid #2c3e50;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+:deep(.station-popup.route-highlighted h4) {
+  color: #2c3e50;
+  font-weight: bold;
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
 /* Styles pour les éléments mis en évidence */
 :deep(.edge-popup.highlighted) {
   background-color: rgba(231, 76, 60, 0.1);
@@ -1218,6 +1757,47 @@ const showAllElements = () => {
   background-color: rgba(52, 152, 219, 0.1);
   border-radius: 4px;
   margin-top: 5px;
+}
+
+:deep(.station-type-mst) {
+  color: #9b59b6;
+  font-weight: bold;
+  display: block;
+  padding: 5px;
+  background-color: rgba(155, 89, 182, 0.1);
+  border-radius: 4px;
+  margin-top: 5px;
+}
+
+/* Styles spécifiques pour l'affichage de l'ACPM */
+:deep(.edge-popup.mst-highlighted) {
+  background-color: rgba(155, 89, 182, 0.1);
+  border: 3px solid #9b59b6;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+:deep(.edge-popup.mst-highlighted h4) {
+  color: #9b59b6;
+  font-weight: bold;
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+:deep(.station-popup.mst-highlighted) {
+  background-color: rgba(155, 89, 182, 0.1);
+  border: 3px solid #9b59b6;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+:deep(.station-popup.mst-highlighted h4) {
+  color: #9b59b6;
+  font-weight: bold;
+  margin: 0 0 8px 0;
+  font-size: 16px;
 }
 
 /* Styles pour les contrôles de la carte */
