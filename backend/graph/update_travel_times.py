@@ -31,23 +31,25 @@ class TravelTimeCalculator:
             '1': 35.57,   # Ligne 1 (automatique)
             '2': 32.35,   # Ligne 2
             '3': 35.25,   # Ligne 3
-            '3bis': 15.60, # Ligne 3bis (courte et lente)
-            '4': 29.04,   # Ligne 4 (automatique mais plus lente que prévu)
+            '3B': 15.60,  # Ligne 3bis (courte et lente) - Note: '3B' dans la DB
+            '3bis': 15.60, # Alias pour compatibilité
+            '4': 34.04,   # Ligne 4
             '5': 35.04,   # Ligne 5
             '6': 30.22,   # Ligne 6 (partiellement aérienne)
-            '7': 31.89,   # Ligne 7
-            '7bis': 25.71, # Ligne 7bis (embranchement)
+            '7': 33.89,   # Ligne 7
+            '7B': 25.71,  # Ligne 7bis (embranchement) - Note: '7B' dans la DB
+            '7bis': 25.71, # Alias pour compatibilité
             '8': 32.64,   # Ligne 8
             '9': 33.60,   # Ligne 9
             '10': 30.52,  # Ligne 10
             '11': 29.08,  # Ligne 11
             '12': 30.21,  # Ligne 12
             '13': 32.40,  # Ligne 13
-            '14': 49.41,  # Ligne 14 (la plus rapide, automatique)
+            '14': 70.41,  # Ligne 14 (la plus rapide, automatique)
         }
         
         # Vitesse par défaut pour les lignes non reconnues
-        self.DEFAULT_SPEED_KMH = 32.0  # Moyenne approximative
+        self.DEFAULT_SPEED_KMH = 32  # Moyenne approximative
     
     def connect(self):
         """Établit la connexion à la base de données"""
@@ -198,6 +200,21 @@ class TravelTimeCalculator:
             'total': len(edges)
         }
         
+        # Analyser la première arête pour comprendre la structure
+        if edges:
+            first_edge = dict(edges[0])
+            logger.info(f"Structure de la première arête: {first_edge}")
+            
+            # Identifier les colonnes potentielles pour les lignes
+            potential_route_columns = []
+            for key, value in first_edge.items():
+                if any(term in key.lower() for term in ['route', 'line', 'short']):
+                    potential_route_columns.append((key, value))
+            
+            logger.info(f"Colonnes potentielles pour la ligne: {potential_route_columns}")
+        
+        line_distribution = {}  # Pour analyser la distribution des lignes
+        
         for edge in edges:
             edge_dict = dict(edge)
             
@@ -212,8 +229,14 @@ class TravelTimeCalculator:
                     from_stop = value
                 elif key.lower() in ['to_stop', 'to_stop_id', 'destination', 'dest']:
                     to_stop = value
-                elif key.lower() in ['route_short_name', 'route_id', 'line']:
+                elif key.lower() == 'route_short_name':  # Priorité au route_short_name qui contient le vrai numéro de ligne
                     route_info = value
+                elif key.lower() in ['route_id', 'line'] and route_info is None:  # Fallback si pas de route_short_name
+                    route_info = value
+            
+            # Analyser la distribution des lignes pour diagnostic
+            if route_info:
+                line_distribution[route_info] = line_distribution.get(route_info, 0) + 1
             
             if not from_stop or not to_stop:
                 # Essayer d'autres approches pour identifier les stations
@@ -253,6 +276,8 @@ class TravelTimeCalculator:
             if statistics['updated'] % 100 == 0:
                 logger.info(f"Traité {statistics['updated']}/{statistics['total']} arêtes...")
         
+        # Afficher la distribution des lignes trouvées
+        logger.info(f"Distribution des lignes détectées: {dict(sorted(line_distribution.items()))}")
         logger.info(f"Statistiques: {statistics}")
         
         if dry_run:
