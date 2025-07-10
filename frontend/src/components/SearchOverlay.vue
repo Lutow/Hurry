@@ -40,7 +40,29 @@
         <div class="form-footer">
           <div class="time-selector">
             <span class="material-icons">schedule</span>
-            <input type="time" v-model="heure" class="time-input" />
+            <div class="time-controls">
+              <div class="time-type-selector">
+                <label>
+                  <input type="radio" v-model="timeType" value="departure" />
+                  <span>Départ</span>
+                </label>
+                <label>
+                  <input type="radio" v-model="timeType" value="arrival" />
+                  <span>Arrivée</span>
+                </label>
+                <label>
+                  <input type="radio" v-model="timeType" value="now" />
+                  <span>Sans horaire</span>
+                </label>
+              </div>
+              <input 
+                type="time" 
+                v-model="heure" 
+                class="time-input" 
+                :disabled="timeType === 'now'"
+                :class="{ 'disabled': timeType === 'now' }"
+              />
+            </div>
           </div>
           
           <button type="submit" class="search-button" :disabled="loading">
@@ -256,10 +278,15 @@
 <script setup>
 import {ref, inject, onMounted, watch} from 'vue'
 import RouteResults from './RouteResults.vue'
+import { useDestination } from '../composables/useDestination.js'
+
+// Utiliser le composable pour la destination
+const { selectedDestination } = useDestination()
 
 const depart = ref('')
 const arrivee = ref('')
 const heure = ref('')
+const timeType = ref('now') // 'departure', 'arrival', 'now'
 const loading = ref(false)
 const stops = ref([])
 const errorMessage = ref('')
@@ -288,7 +315,19 @@ const animationSpeed = ref(500) // ms par étape
 const mapInstance = inject('mapInstance', null)
 const displayRouteOnMap = inject('displayRouteOnMap', null)
 
+// Surveiller les changements de la destination sélectionnée
+watch(selectedDestination, (newDestination) => {
+  if (newDestination && newDestination.trim() !== '') {
+    arrivee.value = newDestination;
+  }
+}, { immediate: true });
+
 onMounted(async () => {
+  // Initialiser l'heure par défaut à l'heure actuelle
+  const now = new Date();
+  const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+  heure.value = currentTime;
+
   try {
     // Ajouter un timeout pour éviter les attentes infinies
     const controller = new AbortController();
@@ -398,8 +437,31 @@ async function handleSearch() {
   showResults.value = true
   
   try {
-    const response = await fetch(`/api/routes?depart=${encodeURIComponent(depart.value)}&arrivee=${encodeURIComponent(arrivee.value)}`)
-    const data = await response.json()
+    let url;
+    let params = new URLSearchParams({
+      depart: depart.value,
+      arrivee: arrivee.value
+    });
+    
+    // Choisir l'endpoint en fonction du type d'horaire
+    if (timeType.value === 'now') {
+      // Utiliser l'ancien endpoint pour les recherches sans horaire spécifique
+      url = `/api/routes?${params.toString()}`;
+    } else {
+      // Utiliser le nouveau endpoint avec horaires
+      url = `/api/routes-with-schedule?${params.toString()}`;
+      
+      if (timeType.value === 'departure' && heure.value) {
+        params.append('departure_time', heure.value);
+      } else if (timeType.value === 'arrival' && heure.value) {
+        params.append('arrival_time', heure.value);
+      }
+      
+      url = `/api/routes-with-schedule?${params.toString()}`;
+    }
+    
+    const response = await fetch(url);
+    const data = await response.json();
     
     if (data.error) {
       errorMessage.value = data.error
@@ -970,24 +1032,66 @@ function resetAnimation() {
   background: var(--sidebar-bg-secondary);
   border-radius: 6px;
   padding: 6px 10px;
+  gap: 8px;
 }
 
 .time-selector .material-icons {
-  margin-right: 8px;
   font-size: 16px;
   color: var(--sidebar-text-secondary);
 }
 
+.time-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.time-type-selector {
+  display: flex;
+  gap: 12px;
+}
+
+.time-type-selector label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--sidebar-text-secondary);
+}
+
+.time-type-selector input[type="radio"] {
+  margin: 0;
+  accent-color: var(--sidebar-accent);
+}
+
+.time-type-selector label:has(input:checked) {
+  color: var(--sidebar-accent);
+  font-weight: 500;
+}
+
 .time-input {
   background: transparent;
-  border: none;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 4px;
   color: var(--sidebar-text);
-  font-size: 14px;
-  width: 80px;
+  font-size: 12px;
+  padding: 4px 6px;
+  width: 100%;
+  transition: all 0.3s ease;
 }
 
 .time-input:focus {
   outline: none;
+  border-color: var(--sidebar-accent);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.time-input.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--sidebar-bg-primary);
 }
 
 .search-button {
@@ -1406,17 +1510,17 @@ function resetAnimation() {
 /* Styles pour le dropdown personnalisé des stations */
 .station-dropdown {
   position: absolute;
-  top: calc(100% + 5px);
+  top: calc(100% + 5px); /* Un peu plus d'espace depuis le formulaire */
   left: 0;
   right: 0;
   z-index: 1000;
-  background: rgba(20, 20, 20, 0.98);
+  background: rgba(20, 20, 20, 0.98); /* Plus foncé pour un look plus "pop-up" */
   border: 1px solid rgba(52, 152, 219, 0.7);
   border-radius: 8px;
   max-height: 300px;
   overflow-y: auto;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6); /* Ombre plus prononcée */
+  backdrop-filter: blur(10px); /* Effet de flou d'arrière-plan */
 }
 
 .station-option {
