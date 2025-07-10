@@ -8,11 +8,11 @@
       <span class="material-icons settings-icon" @click="toggleSettings">settings</span>
       <div class="header-line"></div>
     </div>
-    
+
     <div class="planner-section">
       <SearchOverlay />
     </div>
-    
+
     <div class="traffic-section">
       <div class="section-header">
         <div class="section-title">
@@ -31,7 +31,7 @@
         <h3>Paramètres</h3>
         <span class="material-icons close-settings" @click="toggleSettings">close</span>
       </div>
-      
+
       <div class="settings-content">
         <div class="settings-group">
           <h4>Affichage</h4>
@@ -74,11 +74,11 @@
 <script setup>
 import Traffic from "./Traffic.vue";
 import SearchOverlay from "./SearchOverlay.vue";
-import {computed, onMounted, ref} from 'vue';
+import {computed, onMounted, ref, provide, watch} from 'vue';
 
 const showSettings = ref(false);
 const trafficComponent = ref(null);
-const isLight = ref(false)
+const isLight = ref(false);
 
 const cssVars = computed(() => ({
   '--sidebar-bg': isLight.value ? '#f8f9fa' : '#2c3e50',
@@ -106,7 +106,7 @@ const refreshTraffic = () => {
       refreshIcon.classList.remove('refreshing');
     }, 1000);
   }
-  
+
   // Appeler la méthode de rafraîchissement du composant Traffic si elle existe
   if (trafficComponent.value && trafficComponent.value.retryFetch) {
     trafficComponent.value.retryFetch();
