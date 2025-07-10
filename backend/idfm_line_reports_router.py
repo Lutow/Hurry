@@ -77,4 +77,3 @@ def get_ratp_disruptions():
     logger.info(f"🟢 {len(filtered['disruptions'])} perturbations retenues (métro/RER)")
     logger.info(f"🟢 {len(filtered['lines'])} lignes retenues (métro/RER)")
     return JSONResponse(content=filtered)
-
