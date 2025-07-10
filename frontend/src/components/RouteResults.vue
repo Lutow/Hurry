@@ -50,19 +50,36 @@
             <div class="route-summary">
               <div class="route-info">
                 <span class="route-label">{{ getOptionLabel(index) }}</span>
-                <div class="route-metrics">
-                  <span class="emission">
-                    <span class="material-icons">co2</span>
-                    {{ route.co2 }} g
-                  </span>
-                  <span class="duration">
+                
+                <!-- Horaires si disponibles -->
+                <div v-if="route.departure_time && route.arrival_time" class="route-schedule">
+                  <div class="schedule-time">
                     <span class="material-icons">schedule</span>
-                    {{ route.duration }} min
-                  </span>
-                  <span class="transfers">
-                    <span class="material-icons">transfer_within_a_station</span>
-                    {{ route.transfers }} correspondance{{ route.transfers !== 1 ? 's' : '' }}
-                  </span>
+                    <span>{{ route.departure_time }} → {{ route.arrival_time }}</span>
+                  </div>
+                  <div v-if="route.total_waiting_time > 0" class="waiting-time">
+                    <span class="material-icons">hourglass_top</span>
+                    <span>{{ route.total_waiting_time }} min d'attente</span>
+                  </div>
+                </div>
+                
+                <div class="route-metrics">
+                  <div class="primary-metrics">
+                    <span class="emission">
+                      <span class="material-icons">co2</span>
+                      {{ route.co2 }} g
+                    </span>
+                    <span class="duration">
+                      <span class="material-icons">schedule</span>
+                      {{ route.duration || route.total_travel_time }} min
+                    </span>
+                  </div>
+                  <div class="secondary-metrics">
+                    <span class="transfers">
+                      <span class="material-icons">transfer_within_a_station</span>
+                      {{ route.transfers }} correspondance{{ route.transfers !== 1 ? 's' : '' }}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -84,35 +101,43 @@
             <div class="route-details">
               <div class="segments">
                 <div v-for="(segment, segmentIndex) in route.segments" :key="segmentIndex" class="segment">
-                  <!-- Correspondance entre segments -->
-                  <div v-if="segmentIndex > 0" class="transfer-indicator">
-                    <div class="transfer-dot">
-                      <span class="material-icons">sync_alt</span>
-                    </div>
-                    <div class="transfer-label">Correspondance</div>
-                  </div>
-
                   <div class="segment-main">
                     <div class="line-indicator">
-                      <div class="line-badge" :style="{ backgroundColor: getLineColor(segment.line) }">
+                      <!-- Badge spécial pour les correspondances -->
+                      <div v-if="segment.type === 'transfer'" class="line-badge transfer-badge">
+                        <span class="material-icons">transfer_within_a_station</span>
+                      </div>
+                      <!-- Badge normal pour les lignes de métro -->
+                      <div v-else class="line-badge" :style="{ backgroundColor: getLineColor(segment.line) }">
                         {{ segment.line }}
                       </div>
                     </div>
                     <div class="segment-info">
+                      <!-- Métadonnées du segment (avant le trajet) -->
+                      <div class="segment-meta">
+                        <!-- Ne pas afficher le nombre de stations pour les correspondances -->
+                        <div v-if="segment.type !== 'transfer'" class="station-count">
+                          <span class="material-icons">directions_subway</span>
+                          {{ segment.stops || 1 }} station{{ (segment.stops || 1) !== 1 ? 's' : '' }}
+                        </div>
+                        <span v-if="segment.waiting_time > 0" class="waiting-info">
+                          <span class="material-icons">hourglass_top</span>
+                          {{ segment.waiting_time }} min d'attente
+                        </span>
+                      </div>
+                      <!-- Trajet (après les métadonnées) -->
                       <div class="segment-path">
                         <div class="station-row">
                           <span class="material-icons station-icon">trip_origin</span>
-                          <span class="station-name">{{ segment.from }}</span>
+                          <span class="station-name">{{ segment.from_station || segment.from }}</span>
+                          <span v-if="segment.departure_time" class="departure-time">{{ segment.departure_time }}</span>
                         </div>
                         <div class="journey-line"></div>
                         <div class="station-row">
                           <span class="material-icons station-icon">place</span>
-                          <span class="station-name">{{ segment.to }}</span>
+                          <span class="station-name">{{ segment.to_station || segment.to }}</span>
+                          <span v-if="segment.arrival_time" class="arrival-time">{{ segment.arrival_time }}</span>
                         </div>
-                      </div>
-                      <div class="segment-meta">
-                        <span class="material-icons">directions_subway</span>
-                        {{ segment.stops }} station{{ segment.stops !== 1 ? 's' : '' }}
                       </div>
                     </div>
                   </div>
@@ -220,6 +245,23 @@ const greenestIndex = computed(() => {
 })
 
 function getOptionLabel(index) {
+  const route = props.routes[index]
+  
+  // Si le backend a fourni un label personnalisé, l'utiliser
+  if (route && route.option_label) {
+    return route.option_label
+  }
+  
+  // Si on a des horaires, utiliser une numérotation simple avec indication du créneau
+  if (route && route.departure_time && route.arrival_time) {
+    if (route.is_requested_time) {
+      return "À l'heure demandée"
+    } else {
+      return `Départ ${route.departure_time}`
+    }
+  }
+  
+  // Fallback vers l'ancien système optimisé
   if (props.routes.length === 1) return "Option unique"
   if (index === fastestIndex.value && index === greenestIndex.value) return "Option optimale"
   if (index === fastestIndex.value) return "Option la plus rapide"
@@ -508,7 +550,19 @@ watch(() => props.routes, () => {
 
 .route-metrics {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.primary-metrics {
+  display: flex;
   gap: 16px;
+  align-items: center;
+}
+
+.secondary-metrics {
+  display: flex;
+  justify-content: flex-start;
 }
 
 /* Harmoniser tous les blocs d'infos (CO2, durée, correspondances) */
@@ -559,39 +613,6 @@ watch(() => props.routes, () => {
   gap: 8px;
 }
 
-.transfer-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-  padding: 8px;
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #856404;
-}
-
-.transfer-dot {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: #ffeaa7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.transfer-dot .material-icons {
-  font-size: 14px;
-  color: #856404;
-}
-
-.transfer-label {
-  font-weight: 500;
-}
-
 .segment-main {
   display: flex;
   align-items: flex-start;
@@ -615,6 +636,17 @@ watch(() => props.routes, () => {
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.transfer-badge {
+  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.3);
+}
+
+.transfer-badge .material-icons {
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .segment-info {
@@ -657,11 +689,18 @@ watch(() => props.routes, () => {
   gap: 4px;
   font-size: 12px;
   color: #999;
-  margin-top: 4px;
+  margin-bottom: 8px;
+  margin-top: 2px;
 }
 
 .segment-meta .material-icons {
   font-size: 14px;
+}
+
+.station-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .route-actions {
@@ -702,6 +741,81 @@ watch(() => props.routes, () => {
 
 .show-route-btn .material-icons {
   font-size: 16px;
+}
+
+/* Styles pour les horaires */
+.route-schedule {
+  margin: 8px 0;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border-left: 3px solid #3498db;
+}
+
+.schedule-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.schedule-time .material-icons {
+  font-size: 16px;
+  color: #3498db;
+}
+
+.waiting-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #e67e22;
+  margin-top: 4px;
+}
+
+.waiting-time .material-icons {
+  font-size: 14px;
+}
+
+.departure-time, .arrival-time {
+  font-size: 11px;
+  color: #3498db;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.waiting-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: #e67e22;
+}
+
+.waiting-info .material-icons {
+  font-size: 12px;
+}
+
+.requested-badge {
+  background: #e74c3c;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.time-slot-badge {
+  background: #3498db;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 600;
 }
 
 /* Responsive */
