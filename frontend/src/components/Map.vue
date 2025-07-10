@@ -17,7 +17,7 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, provide } from 'vue'
+import { onMounted, onUnmounted, ref, provide, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import Sidebar from "./Sidebar.vue";
@@ -698,122 +698,151 @@ const showOnlyRoute = (route) => {
   // Stocker les segments pour l'affichage organisé
   const routeSegments = []
   
-  // Extraire toutes les stations du trajet (départ et arrivée de chaque segment)
-  if (route.segments) {
-    route.segments.forEach(segment => {
-      routeStationNames.add(segment.from)
-      routeStationNames.add(segment.to)
+  // NOUVELLE LOGIQUE UNIFIÉE : utiliser le detailed_path si disponible (trajets avec horaires)
+  // ou construire à partir des segments (trajets sans horaires)
+  let segmentsToProcess = []
+  
+  if (route.detailed_path && route.detailed_path.length > 0) {
+    // Trajets avec horaires : utiliser detailed_path
+    console.log('Trajet avec horaires - utilisation de detailed_path:', route.detailed_path)
+    segmentsToProcess = route.detailed_path
+  } else if (route.segments) {
+    // Trajets sans horaires : utiliser segments
+    console.log('Trajet sans horaires - utilisation de segments:', route.segments)
+    segmentsToProcess = route.segments
+  }
+  
+  // Extraire toutes les stations du trajet
+  segmentsToProcess.forEach((segment, index) => {
+    console.log(`Segment ${index}:`, segment)
+    
+    // Gérer les deux formats : trajets avec horaires (from_station/to_station) et sans horaires (from/to)
+    const fromStation = segment.from_station || segment.from
+    const toStation = segment.to_station || segment.to
+    const lineInfo = segment.line
+    
+    console.log(`  fromStation: "${fromStation}", toStation: "${toStation}", line: "${lineInfo}"`)
+    
+    if (fromStation && toStation) {
+      routeStationNames.add(fromStation)
+      routeStationNames.add(toStation)
       
       // Ajouter les infos du segment pour l'affichage
       routeSegments.push({
-        from: segment.from,
-        to: segment.to,
-        line: segment.line
+        from: fromStation,
+        to: toStation,
+        line: lineInfo
       })
-    })
-  }
+    }
+  })
+  
+  console.log('Stations du trajet extraites:', Array.from(routeStationNames))
+  console.log('Segments du trajet:', routeSegments)
   
   // Filtrer les arêtes pour ne garder que celles du trajet
   const routeEdgesFeatures = []
   
-  if (route.segments) {
-    route.segments.forEach(segment => {
-      console.log(`Traitement du segment: ${segment.from} -> ${segment.to} (ligne: ${segment.line})`)
+  // Utiliser les segments traités uniformément
+  segmentsToProcess.forEach(segment => {
+    const fromStation = segment.from_station || segment.from
+    const toStation = segment.to_station || segment.to
+    const lineInfo = segment.line
+    
+    console.log(`Traitement du segment: ${fromStation} -> ${toStation} (ligne: ${lineInfo})`)
+    
+    // Pour les segments de correspondance (transferts)
+    if (segment.type === 'transfer' || lineInfo === 'Correspondance') {
+      const transferEdges = originalEdgesData.value.features.filter(feature => {
+        return feature.properties.type === 'transfer' &&
+               ((feature.properties.from_name === fromStation && feature.properties.to_name === toStation) ||
+                (feature.properties.from_name === toStation && feature.properties.to_name === fromStation))
+      })
+      console.log(`Trouvé ${transferEdges.length} transferts pour ${fromStation} -> ${toStation}`)
+      routeEdgesFeatures.push(...transferEdges)
+    } else {
+      // Pour les segments de métro (connexions directes)
+      // Chercher toutes les arêtes directes de cette ligne entre ces deux stations
+      const directEdges = originalEdgesData.value.features.filter(feature => {
+        const fromName = feature.properties.from_name
+        const toName = feature.properties.to_name
+        const routeShortName = feature.properties.route_short_name
+        
+        // Correspondance exacte par nom et ligne
+        const exactMatch = (fromName === fromStation && toName === toStation && routeShortName === lineInfo) ||
+                          (fromName === toStation && toName === fromStation && routeShortName === lineInfo)
+        
+        // Si pas de correspondance exacte, essayer juste par nom (moins strict)
+        const nameMatch = (fromName === fromStation && toName === toStation) ||
+                         (fromName === toStation && toName === fromStation)
+        
+        return exactMatch || nameMatch
+      })
       
-      // Pour les segments de correspondance (transferts)
-      if (segment.type === 'transfer' || segment.line === 'Correspondance') {
-        const transferEdges = originalEdgesData.value.features.filter(feature => {
-          return feature.properties.type === 'transfer' &&
-                 ((feature.properties.from_name === segment.from && feature.properties.to_name === segment.to) ||
-                  (feature.properties.from_name === segment.to && feature.properties.to_name === segment.from))
-        })
-        console.log(`Trouvé ${transferEdges.length} transferts pour ${segment.from} -> ${segment.to}`)
-        routeEdgesFeatures.push(...transferEdges)
-      } else {
-        // Pour les segments de métro (connexions directes)
-        // Chercher toutes les arêtes directes de cette ligne entre ces deux stations
-        const directEdges = originalEdgesData.value.features.filter(feature => {
-          const fromName = feature.properties.from_name
-          const toName = feature.properties.to_name
-          const routeShortName = feature.properties.route_short_name
-          
-          // Correspondance exacte par nom et ligne
-          const exactMatch = (fromName === segment.from && toName === segment.to && routeShortName === segment.line) ||
-                            (fromName === segment.to && toName === segment.from && routeShortName === segment.line)
-          
-          // Si pas de correspondance exacte, essayer juste par nom (moins strict)
-          const nameMatch = (fromName === segment.from && toName === segment.to) ||
-                           (fromName === segment.to && toName === segment.from)
-          
-          return exactMatch || nameMatch
+      console.log(`Trouvé ${directEdges.length} connexions directes pour ${fromStation} -> ${toStation} (ligne ${lineInfo})`)
+      routeEdgesFeatures.push(...directEdges)
+      
+      // Si on n'a pas trouvé d'arêtes directes exactes, chercher le chemin sur la ligne
+      if (directEdges.length === 0 && lineInfo && lineInfo !== 'Correspondance') {
+        console.log(`Recherche du chemin sur la ligne ${lineInfo} entre ${fromStation} et ${toStation}`)
+        
+        // Chercher toutes les arêtes de cette ligne
+        const lineEdges = originalEdgesData.value.features.filter(feature => {
+          return feature.properties.route_short_name === lineInfo &&
+                 feature.properties.type === 'direct'
         })
         
-        console.log(`Trouvé ${directEdges.length} connexions directes pour ${segment.from} -> ${segment.to} (ligne ${segment.line})`)
-        routeEdgesFeatures.push(...directEdges)
+        // Construire un graphe simple pour cette ligne pour trouver le chemin
+        const lineGraph = new Map()
+        lineEdges.forEach(edge => {
+          const from = edge.properties.from_name
+          const to = edge.properties.to_name
+          
+          if (!lineGraph.has(from)) lineGraph.set(from, [])
+          if (!lineGraph.has(to)) lineGraph.set(to, [])
+          
+          lineGraph.get(from).push({ station: to, edge })
+          lineGraph.get(to).push({ station: from, edge })
+        })
         
-        // Si on n'a pas trouvé d'arêtes directes exactes, chercher le chemin sur la ligne
-        if (directEdges.length === 0 && segment.line && segment.line !== 'Correspondance') {
-          console.log(`Recherche du chemin sur la ligne ${segment.line} entre ${segment.from} et ${segment.to}`)
+        // Fonction pour trouver le chemin le plus court entre deux stations
+        const findPath = (start, end, graph) => {
+          if (start === end) return []
           
-          // Chercher toutes les arêtes de cette ligne
-          const lineEdges = originalEdgesData.value.features.filter(feature => {
-            return feature.properties.route_short_name === segment.line &&
-                   feature.properties.type === 'direct'
-          })
+          const visited = new Set()
+          const queue = [{ station: start, path: [] }]
           
-          // Construire un graphe simple pour cette ligne pour trouver le chemin
-          const lineGraph = new Map()
-          lineEdges.forEach(edge => {
-            const from = edge.properties.from_name
-            const to = edge.properties.to_name
+          while (queue.length > 0) {
+            const { station, path } = queue.shift()
             
-            if (!lineGraph.has(from)) lineGraph.set(from, [])
-            if (!lineGraph.has(to)) lineGraph.set(to, [])
+            if (visited.has(station)) continue
+            visited.add(station)
             
-            lineGraph.get(from).push({ station: to, edge })
-            lineGraph.get(to).push({ station: from, edge })
-          })
-          
-          // Fonction pour trouver le chemin le plus court entre deux stations
-          const findPath = (start, end, graph) => {
-            if (start === end) return []
+            if (station === end) {
+              return path
+            }
             
-            const visited = new Set()
-            const queue = [{ station: start, path: [] }]
-            
-            while (queue.length > 0) {
-              const { station, path } = queue.shift()
-              
-              if (visited.has(station)) continue
-              visited.add(station)
-              
-              if (station === end) {
-                return path
-              }
-              
-              const neighbors = graph.get(station) || []
-              for (const neighbor of neighbors) {
-                if (!visited.has(neighbor.station)) {
-                  queue.push({
-                    station: neighbor.station,
-                    path: [...path, neighbor.edge]
-                  })
-                }
+            const neighbors = graph.get(station) || []
+            for (const neighbor of neighbors) {
+              if (!visited.has(neighbor.station)) {
+                queue.push({
+                  station: neighbor.station,
+                  path: [...path, neighbor.edge]
+                })
               }
             }
-            return []
           }
-          
-          // Trouver le chemin entre les deux stations
-          const pathEdges = findPath(segment.from, segment.to, lineGraph)
-          console.log(`Trouvé ${pathEdges.length} arêtes pour le chemin ${segment.from} -> ${segment.to}`)
-          routeEdgesFeatures.push(...pathEdges)
+          return []
         }
+        
+        // Trouver le chemin entre les deux stations
+        const pathEdges = findPath(fromStation, toStation, lineGraph)
+        console.log(`Trouvé ${pathEdges.length} arêtes pour le chemin ${fromStation} -> ${toStation}`)
+        routeEdgesFeatures.push(...pathEdges)
       }
-    })
-  }
+    }
+  })
   
-  // MAINTENANT ajouter les stations intermédiaires basées sur les arêtes trouvées
+  // Ajouter les stations intermédiaires basées sur les arêtes trouvées
   routeEdgesFeatures.forEach(edge => {
     routeStationNames.add(edge.properties.from_name)
     routeStationNames.add(edge.properties.to_name)
@@ -835,8 +864,15 @@ const showOnlyRoute = (route) => {
         const stationName = feature.properties.name
         
         // Vérifier si la station est un départ ou une arrivée de trajet
-        const isStartOfRoute = route.segments[0].from === stationName
-        const isEndOfRoute = route.segments[route.segments.length - 1].to === stationName
+        // Utiliser les segments traités uniformément
+        const firstSegment = segmentsToProcess[0]
+        const lastSegment = segmentsToProcess[segmentsToProcess.length - 1]
+        
+        const firstStationName = firstSegment?.from_station || firstSegment?.from
+        const lastStationName = lastSegment?.to_station || lastSegment?.to
+        
+        const isStartOfRoute = firstStationName === stationName
+        const isEndOfRoute = lastStationName === stationName
         
         // Style simplifié mais distinctif
         if (isStartOfRoute) {
@@ -873,8 +909,15 @@ const showOnlyRoute = (route) => {
         const stationName = feature.properties.name
         
         // Vérifier le type de station dans l'itinéraire
-        const isStartOfRoute = route.segments[0].from === stationName
-        const isEndOfRoute = route.segments[route.segments.length - 1].to === stationName
+        // Utiliser les segments traités uniformément
+        const firstSegment = segmentsToProcess[0]
+        const lastSegment = segmentsToProcess[segmentsToProcess.length - 1]
+        
+        const firstStationName = firstSegment?.from_station || firstSegment?.from
+        const lastStationName = lastSegment?.to_station || lastSegment?.to
+        
+        const isStartOfRoute = firstStationName === stationName
+        const isEndOfRoute = lastStationName === stationName
         
         let stationType = ''
         if (isStartOfRoute) {
